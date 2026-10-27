@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>2人同時プレイ ピクロス (Picross Co-op)</title>
+  
+  <!-- iOS Safari 向け WebApp 設定 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+
+  <style>
+    /* ==========================================================================
+       1. 基本リセット & タッチ・ジェスチャー抑止 (iPad / Safari 最適化)
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-touch-callout: none !important;
+      -webkit-user-select: none !important;
+      user-select: none !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      background-color: #c4b182;
+      color: #2c1c08;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* ==========================================================================
+       2. アプリケーションレイアウト
+       ========================================================================== */
+    #app-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-color: #c4b182;
+    }
+
+    /* ヘッダー */
+    header {
+      height: 52px;
+      background: rgba(44, 30, 14, 0.96);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 2px solid rgba(175, 135, 55, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 20;
+      flex-shrink: 0;
+      gap: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .app-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #d4a840;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .badge-host {
+      background: #4a6a30;
+      color: #d0e8a0;
+      border: 1px solid #6a9040;
+    }
+    .badge-guest {
+      background: #7a2c10;
+      color: #f0c0a0;
+      border: 1px solid #a84020;
+    }
+    .badge-waiting {
+      background: #5a4820;
+      color: #b09060;
+      border: 1px solid #7a6030;
+    }
+
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #c0a060;
+      background: rgba(40, 28, 8, 0.7);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(160, 120, 40, 0.35);
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #7a6030;
+    }
+    .status-dot.online {
+      background: #6aaa30;
+      box-shadow: 0 0 8px #6aaa30;
+    }
+    .status-dot.waiting {
+      background: #d4a840;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* 盤面サイズ選択コントロール */
+    .size-selector-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(40, 28, 8, 0.8);
+      border: 1px solid rgba(160, 120, 40, 0.5);
+      border-radius: 6px;
+      padding: 2px 8px;
+    }
+    .size-selector-wrap label {
+      font-size: 11px;
+      color: #b09060;
+      font-weight: 600;
+    }
+    .size-select {
+      background: transparent;
+      color: #d4a840;
+      border: none;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 0;
+      cursor: pointer;
+      outline: none;
+    }
+    .size-select option {
+      background: #3a2808;
+      color: #e8d898;
+    }
+
+    /* BGM音量コントロール */
+    .sound-control-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(40, 28, 8, 0.8);
+      border: 1px solid rgba(160, 120, 40, 0.5);
+      border-radius: 6px;
+      padding: 1px 6px 1px 2px;
+    }
+    .sound-control-group button {
+      background: transparent;
+      border: none;
+      padding: 4px;
+    }
+    .sound-control-group button:hover {
+      background: rgba(200, 160, 60, 0.18);
+    }
+    .volume-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 50px;
+      height: 4px;
+      background: #6a5028;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #d4a840;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(212, 168, 64, 0.5);
+    }
+    .volume-slider::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #d4a840;
+      cursor: pointer;
+      border: none;
+    }
+    .volume-percent {
+      font-size: 10px;
+      color: #b09060;
+      min-width: 22px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ボタンスタイル */
+    button {
+      background: #5a4018;
+      color: #e8d898;
+      border: 1px solid rgba(160, 120, 40, 0.6);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,220,100,0.1);
+    }
+    button:active {
+      transform: scale(0.96);
+    }
+    button:hover {
+      background: #704e20;
+      border-color: rgba(200, 160, 60, 0.8);
+    }
+    .btn-primary {
+      background: #3a6030;
+      border-color: #5a9040;
+      color: #c8e8a0;
+    }
+    .btn-primary:hover {
+      background: #4a7040;
+      box-shadow: 0 0 12px rgba(80, 160, 60, 0.3);
+    }
+    .btn-success {
+      background: #3a6030;
+      border-color: #5a9040;
+      color: #c8e8a0;
+    }
+    .btn-success:hover {
+      background: #4a7040;
+    }
+
+    /* ゲームCanvas領域 */
+    #canvas-container {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      cursor: crosshair;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* ==========================================================================
+       3. フローティングツールバー (iPad / タッチ操作最適化)
+       ========================================================================== */
+    #toolbar {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(48, 32, 8, 0.97);
+      padding: 6px 10px;
+      border-radius: 40px;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(160, 120, 40, 0.5);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 30;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .tool-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      padding: 0;
+      justify-content: center;
+      font-size: 18px;
+      border: 2px solid transparent;
+      background: #3a2808;
+      color: #9a7840;
+      box-shadow: none;
+    }
+    .tool-btn.active {
+      background: #4a6030;
+      color: #c8e8a0;
+      border-color: #7ab050;
+      box-shadow: 0 0 14px rgba(100, 180, 60, 0.5);
+    }
+    .tool-btn-cross.active {
+      background: #7a2c10;
+      border-color: #b05030;
+      box-shadow: 0 0 14px rgba(180, 80, 40, 0.5);
+    }
+    .tool-btn-clear.active {
+      background: #5a4818;
+      border-color: #9a8040;
+      box-shadow: 0 0 14px rgba(154, 128, 64, 0.4);
+    }
+
+    .tool-divider {
+      width: 1px;
+      height: 24px;
+      background: rgba(160, 120, 40, 0.4);
+      margin: 0 4px;
+    }
+
+    .tool-action-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      padding: 0;
+      justify-content: center;
+      font-size: 14px;
+      background: #4a3010;
+      color: #9a7840;
+    }
+
+    /* ==========================================================================
+       4. スタイリッシュなクリア演出インフォバー (ポップアップの代わり)
+       ========================================================================== */
+    #clear-banner {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(30px);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(44, 28, 6, 0.97);
+      border: 1px solid rgba(180, 140, 50, 0.6);
+      padding: 10px 20px;
+      border-radius: 40px;
+      box-shadow: 0 15px 40px -5px rgba(0, 0, 0, 0.8), 0 0 25px rgba(180, 140, 50, 0.2);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 35;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #clear-banner.show {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .clear-badge-icon {
+      font-size: 24px;
+      animation: bounce 0.8s ease infinite alternate;
+    }
+    @keyframes bounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-4px); }
+    }
+
+    .clear-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .clear-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #d4a840;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .clear-puzzle-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #a08050;
+      white-space: nowrap;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .clear-puzzle-title.revealed {
+      color: #d4a840;
+      text-shadow: 0 0 14px rgba(212, 168, 64, 0.6);
+      animation: titlePop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes titlePop {
+      0% { transform: scale(0.85); opacity: 0; }
+      50% { transform: scale(1.12); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    #btn-toggle-view {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      background: #3a6030;
+      color: #c8e8a0;
+      border: 1px solid #5a9040;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    #btn-toggle-view:hover {
+      background: #4a7040;
+      border-color: #7ab050;
+      box-shadow: 0 0 12px rgba(100, 180, 60, 0.3);
+    }
+    #btn-toggle-view:active {
+      transform: scale(0.96);
+    }
+
+    /* 相手の操作通知トースト */
+    #action-toast {
+      position: absolute;
+      top: 64px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(44, 28, 6, 0.95);
+      border: 1px solid rgba(160, 120, 40, 0.5);
+      color: #e8d898;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #action-toast.show {
+      opacity: 1;
+    }
+
+    /* 部屋作成 / 招待モーダル */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 10, 4, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+    .modal-card {
+      background: linear-gradient(160deg, #3a2808 0%, #2c1e06 60%, #201606 100%);
+      border: 1px solid rgba(180, 140, 50, 0.5);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 440px;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(220, 180, 80, 0.15);
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #d4a840;
+      margin-bottom: 8px;
+      text-shadow: 0 0 12px rgba(212, 168, 64, 0.3);
+    }
+    .modal-desc {
+      font-size: 13px;
+      color: #a08050;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    /* 操作ガイドヘルプ */
+    .gesture-hint {
+      position: absolute;
+      top: 64px;
+      right: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff8e7;
+      background: rgba(30, 20, 8, 0.92);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(220, 175, 65, 0.65);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      padding: 6px 12px;
+      border-radius: 8px;
+      pointer-events: none;
+      display: none;
+      letter-spacing: 0.3px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+      z-index: 24;
+    }
+    .gesture-hint .hint-key {
+      color: #ffd866;
+      font-weight: 700;
+    }
+    .gesture-hint .hint-sep {
+      color: rgba(220, 175, 65, 0.5);
+      margin: 0 4px;
+    }
+    @media (min-width: 720px) {
+      .gesture-hint {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+    }
+
+    /* 2人協力クリア数カウンター (操作説明の下に小さく配置・クリックでデータ管理を開く) */
+    .coop-counter {
+      position: absolute;
+      top: 104px;
+      right: 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff8e7;
+      background: rgba(30, 20, 8, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(220, 175, 65, 0.55);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      padding: 4px 10px;
+      border-radius: 6px;
+      pointer-events: auto;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      letter-spacing: 0.3px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+      z-index: 24;
+      transition: all 0.15s ease;
+    }
+    .coop-counter:hover {
+      background: rgba(45, 30, 10, 0.95);
+      border-color: rgba(240, 195, 80, 0.8);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+    }
+    .coop-counter-icon {
+      font-size: 13px;
+    }
+    .coop-counter-label {
+      color: #d4b068;
+    }
+    .coop-counter-val {
+      color: #ffd866;
+      font-weight: 700;
+    }
+    @media (max-width: 719px) {
+      .coop-counter {
+        top: 64px;
+        right: 12px;
+        font-size: 10px;
+        padding: 3px 8px;
+      }
+    }
+
+    /* セーブ管理モーダル用スタイル */
+    .save-status-box {
+      background: rgba(30, 20, 8, 0.8);
+      border: 1px solid rgba(180, 140, 50, 0.4);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .save-status-label {
+      font-size: 12px;
+      color: #c0a060;
+    }
+    .save-status-val {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffd866;
+      font-variant-numeric: tabular-nums;
+    }
+    .save-action-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn-secondary {
+      background: #4a3620;
+      color: #f0e2c6;
+      border: 1px solid rgba(180, 140, 60, 0.6);
+    }
+    .btn-secondary:hover {
+      background: #5c4428;
+      border-color: rgba(220, 175, 75, 0.85);
+      box-shadow: 0 0 10px rgba(180, 140, 60, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <!-- メンテナンス画面 (URL末尾が #shishamochandayo ではない場合に全画面表示・操作完全抑止) -->
+  <div id="maintenance-overlay" style="display: flex; position: fixed; inset: 0; background: #100a02; z-index: 999999; flex-direction: column; align-items: center; justify-content: center; color: #e8d898; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 24px;">
+    <div style="font-size: 52px; margin-bottom: 20px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6));">⛏️</div>
+    <h1 style="font-size: 24px; font-weight: 800; margin-bottom: 12px; color: #d4a840; letter-spacing: 0.5px; text-shadow: 0 0 12px rgba(212,168,64,0.3);">メンテナンス中です。</h1>
+    <p style="font-size: 14px; color: #a08050; max-width: 400px; line-height: 1.6;">現在システムのメンテナンスを実施しております。<br>公開まで今しばらくお待ちください。</p>
+  </div>
+
+  <div id="app-container">
+    <!-- ヘッダー -->
+    <header>
+      <div class="header-left">
+        <div class="app-title">
+          <span>🧩</span>
+          <span>Picross Co-op</span>
+        </div>
+        <span id="role-badge" class="badge badge-waiting">Connecting...</span>
+      </div>
+
+      <div class="header-center">
+        <div class="status-indicator">
+          <div id="status-dot" class="status-dot waiting"></div>
+          <span id="status-text">待機中 (接続初期化中...)</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- 盤面サイズ指定の設定 (デフォルト15x15、最大30x30) -->
+        <div class="size-selector-wrap" title="盤面サイズ変更">
+          <label for="select-board-size">サイズ:</label>
+          <select id="select-board-size" class="size-select">
+            <option value="5">5 × 5</option>
+            <option value="10">10 × 10</option>
+            <option value="15" selected>15 × 15</option>
+            <option value="20">20 × 20</option>
+            <option value="25">25 × 25</option>
+            <option value="30">30 × 30</option>
+          </select>
+        </div>
+
+        <button id="btn-share" title="招待URLをコピー">
+          <span>🔗</span>
+          <span>URL</span>
+        </button>
+        <button id="btn-change-puzzle" title="ランダムに出題">
+          <span>🎲</span>
+          <span>次の問題</span>
+        </button>
+        <div class="sound-control-group" title="BGM音量調整">
+          <button id="btn-toggle-bgm" title="BGM 再生/停止">
+            <span id="btn-toggle-bgm-icon">🎵</span>
+          </button>
+          <input type="range" id="bgm-volume" min="0" max="100" step="1" value="50" class="volume-slider" title="BGM音量 (0~100%)">
+          <span id="bgm-volume-label" class="volume-percent">50%</span>
+        </div>
+        <button id="btn-toggle-sound" title="効果音 ON/OFF" style="padding: 6px 10px; font-size: 13px;">
+          <span id="btn-toggle-sound-icon">🔊</span>
+        </button>
+        <button id="btn-open-save-modal" title="セーブデータ管理 (JSONバックアップ / 復元)" style="padding: 6px 10px; font-size: 12px;">
+          <span>💾</span>
+          <span>セーブ</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- BGM (ループ再生) -->
+    <audio id="bgm-audio" src="music.mp3" loop preload="auto"></audio>
+
+    <!-- メインCanvas -->
+    <div id="canvas-container">
+      <canvas id="game-canvas"></canvas>
+      <div id="action-toast"></div>
+      <div class="gesture-hint"><span>⌨️</span> <span class="hint-key">D</span>+矢印(塗) / <span class="hint-key">F</span>+矢印(✕) / <span class="hint-key">S</span>+矢印(消) / <span class="hint-key">矢印</span>(移動) <span class="hint-sep">|</span> <span>📱</span> 2本指ピンチでズーム</div>
+      <!-- 2人協力クリア数カウンター (操作説明の下に小さく配置・クリックでセーブデータ管理を開く) -->
+      <div id="coop-clear-counter" class="coop-counter" title="クリックでセーブデータ管理（JSONバックアップ/復元）を開く">
+        <span class="coop-counter-icon">👥</span>
+        <span class="coop-counter-label">協力:</span>
+        <span id="coop-counter-val" class="coop-counter-val">4,180問中 0問クリア</span>
+      </div>
+    </div>
+
+    <!-- フローティングツールバー (通常プレイ時) -->
+    <div id="toolbar">
+      <button id="tool-fill" class="tool-btn active" title="塗る (左クリック)">■</button>
+      <button id="tool-cross" class="tool-btn tool-btn-cross" title="バツ印 (右クリック)">✕</button>
+      <button id="tool-clear" class="tool-btn tool-btn-clear" title="消去">□</button>
+      <div class="tool-divider"></div>
+      <button id="btn-reset-view" class="tool-action-btn" title="表示位置をリセット (全体表示)">⟲</button>
+    </div>
+
+    <!-- クリア演出インフォバー (ポップアップではなく画面下部にスマートに表示) -->
+    <div id="clear-banner">
+      <div class="clear-badge-icon">🎉</div>
+      <div class="clear-info">
+        <span class="clear-label">Stage Cleared!</span>
+        <span id="clear-puzzle-title" class="clear-puzzle-title">???</span>
+      </div>
+      <button id="btn-toggle-view" title="盤面と元画像の表示切替">
+        <span id="btn-toggle-view-icon">🖼️</span>
+        <span id="btn-toggle-view-text">答えを見る</span>
+      </button>
+      <button id="btn-banner-next" class="btn-primary" style="padding: 8px 16px; border-radius: 20px; font-weight: 600;">
+        次の問題へ 🎲
+      </button>
+    </div>
+  </div>
+
+  <!-- セーブデータ管理モーダル (JSONバックアップ / 復元) -->
+  <div id="save-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <h3 class="modal-title">💾 セーブデータ管理</h3>
+      <p class="modal-desc">
+        クリア記録をJSONファイルとして保存（バックアップ）したり、以前保存したファイルから復元できます。<br>
+        機種変更時や端末間（PC ⇄ iPad）のデータ引き継ぎにも利用できます。
+      </p>
+
+      <div class="save-status-box">
+        <span class="save-status-label">現在の2人協力クリア記録:</span>
+        <span id="save-status-val" class="save-status-val">4,180問中 0問クリア</span>
+      </div>
+
+      <div class="save-action-group">
+        <button id="btn-export-json" class="btn-primary" style="padding: 10px 16px; width: 100%; justify-content: center; font-size: 13px;">
+          <span>📤</span>
+          <span>バックアップを保存 (JSONダウンロード)</span>
+        </button>
+        <button id="btn-import-json-trigger" class="btn-secondary" style="padding: 10px 16px; width: 100%; justify-content: center; font-size: 13px;">
+          <span>📥</span>
+          <span>ファイルから復元 (JSON読み込み)</span>
+        </button>
+        <input type="file" id="input-save-file" accept=".json,application/json" style="display: none;">
+      </div>
+
+      <div class="modal-buttons" style="margin-top: 18px;">
+        <button id="btn-close-save-modal" style="padding: 8px 18px; font-size: 13px;">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 部屋作成 / 招待用モーダル (URLハッシュが無い場合に表示) -->
+  <div id="welcome-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <h3 class="modal-title">2人同時操作 ピクロスへようこそ</h3>
+      <p class="modal-desc">
+        URLのハッシュを部屋IDとして使用します。<br>
+        「部屋を作成」ボタンを押すと固有のURLが生成され、友達に同じURLを共有するだけで自動的に接続されます。
+      </p>
+      <div class="modal-buttons">
+        <button id="btn-create-room" class="btn-primary" style="padding: 10px 18px; font-size: 14px;">
+          ✨ 新しい部屋を作成して開始
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4,180種類のベクターアイコンデータ (完全オフライン/ローカル/GitHub Pages両対応) -->
+  <script src="assets/icons_data.js?v=ja1"></script>
+  <!-- PeerJS 公式CDN -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- ゲーム本体ロジック -->
+  <script src="main.js?v=save1"></script>
+</body>
+</html>
