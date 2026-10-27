@@ -2517,5 +2517,28 @@
     requestAnimationFrame(render);
   }
 
-  window.addEventListener('DOMContentLoaded', main);
+  function isMobileOrTablet() {
+    const userAgent = navigator.userAgent || '';
+    const isIPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    return /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(userAgent) || isIPadOS;
+  }
+
+  function startAfterOptionalIconLoad() {
+    // 大容量の全アイコンデータはPCだけで読み込む。モバイルは組み込みの問題で起動する。
+    if (isMobileOrTablet()) {
+      main();
+      return;
+    }
+
+    const iconDataScript = document.createElement('script');
+    iconDataScript.src = 'assets/icons_data.js?v=ja1';
+    iconDataScript.onload = main;
+    iconDataScript.onerror = () => {
+      console.warn('Icon data could not be loaded; starting with fallback puzzles.');
+      main();
+    };
+    document.head.appendChild(iconDataScript);
+  }
+
+  window.addEventListener('DOMContentLoaded', startAfterOptionalIconLoad);
 })();
