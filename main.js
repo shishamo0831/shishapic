@@ -424,8 +424,8 @@
     },
 
     getBgmVolume() {
-      // Android端末では出力が小さく感じられるため、iPadなど他の端末より上限を上げる。
-      const maxVolume = /Android/i.test(navigator.userAgent) ? 0.30 : 0.10;
+      // 全体のBGM上限を少し上げ、Android端末はさらに大きめにする。
+      const maxVolume = /Android/i.test(navigator.userAgent) ? 0.45 : 0.15;
       return (this.bgmSliderPercent / 100) * maxVolume;
     },
 
