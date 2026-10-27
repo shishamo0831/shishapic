@@ -113,6 +113,14 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .header-audio-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
     }
 
     .status-indicator {
@@ -206,7 +214,7 @@
     .volume-slider {
       -webkit-appearance: none;
       appearance: none;
-      width: 50px;
+      width: 100px;
       height: 4px;
       background: #6a5028;
       border-radius: 2px;
@@ -670,6 +678,19 @@
         <span id="role-badge" class="badge badge-waiting">Connecting...</span>
       </div>
 
+      <div class="header-audio-controls">
+        <div class="sound-control-group" title="BGM音量調整">
+          <button id="btn-toggle-bgm" title="BGM 再生/停止">
+            <span id="btn-toggle-bgm-icon">🎵</span>
+          </button>
+          <input type="range" id="bgm-volume" min="0" max="100" step="1" value="50" class="volume-slider" title="BGM音量 (0~100%)">
+          <span id="bgm-volume-label" class="volume-percent">50%</span>
+        </div>
+        <button id="btn-toggle-sound" title="効果音 ON/OFF" style="padding: 6px 10px; font-size: 13px;">
+          <span id="btn-toggle-sound-icon">🔊</span>
+        </button>
+      </div>
+
       <div class="header-center">
         <div class="status-indicator">
           <div id="status-dot" class="status-dot waiting"></div>
@@ -698,16 +719,6 @@
         <button id="btn-change-puzzle" title="ランダムに出題">
           <span>🎲</span>
           <span>次の問題</span>
-        </button>
-        <div class="sound-control-group" title="BGM音量調整">
-          <button id="btn-toggle-bgm" title="BGM 再生/停止">
-            <span id="btn-toggle-bgm-icon">🎵</span>
-          </button>
-          <input type="range" id="bgm-volume" min="0" max="100" step="1" value="50" class="volume-slider" title="BGM音量 (0~100%)">
-          <span id="bgm-volume-label" class="volume-percent">50%</span>
-        </div>
-        <button id="btn-toggle-sound" title="効果音 ON/OFF" style="padding: 6px 10px; font-size: 13px;">
-          <span id="btn-toggle-sound-icon">🔊</span>
         </button>
         <button id="btn-open-save-modal" title="セーブデータ管理 (JSONバックアップ / 復元)" style="padding: 6px 10px; font-size: 12px;">
           <span>💾</span>

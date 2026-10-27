@@ -402,8 +402,7 @@
 
     setBgmSliderPercent(percent) {
       this.bgmSliderPercent = Math.max(0, Math.min(100, Math.round(percent)));
-      // ★スライダー50%のときに実際の音量が0.05 (現状の5%) になるスケーリング★
-      const actualVolume = (this.bgmSliderPercent / 100) * 0.10;
+      const actualVolume = this.getBgmVolume();
 
       if (DOM.bgmAudio) {
         DOM.bgmAudio.volume = this.isDuckedForClear ? (actualVolume * 0.3) : actualVolume;
@@ -422,6 +421,12 @@
       if (this.bgmSliderPercent > 0 && !this.bgmPlaying && !AppState.isSolved && DOM.bgmAudio && DOM.bgmAudio.paused) {
         this.startBgm();
       }
+    },
+
+    getBgmVolume() {
+      // Android端末では出力が小さく感じられるため、iPadなど他の端末より上限を上げる。
+      const maxVolume = /Android/i.test(navigator.userAgent) ? 0.30 : 0.10;
+      return (this.bgmSliderPercent / 100) * maxVolume;
     },
 
     startBgm() {
@@ -449,7 +454,7 @@
     duckBgmForClear() {
       if (DOM.bgmAudio && this.bgmPlaying) {
         this.isDuckedForClear = true;
-        const normalVolume = (this.bgmSliderPercent / 100) * 0.10;
+        const normalVolume = this.getBgmVolume();
         DOM.bgmAudio.volume = normalVolume * 0.3; // 30%音量
       }
     },
@@ -458,7 +463,7 @@
     resumeBgmAfterClear() {
       if (this.isDuckedForClear) {
         this.isDuckedForClear = false;
-        const normalVolume = (this.bgmSliderPercent / 100) * 0.10;
+        const normalVolume = this.getBgmVolume();
         if (DOM.bgmAudio) {
           DOM.bgmAudio.volume = normalVolume;
         }
