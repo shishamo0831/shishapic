@@ -366,6 +366,7 @@
     ctx: null,
     isMuted: false,
     bgmPlaying: false,
+    bgmStarting: false,
     bgmSliderPercent: 50, // デフォルト: 50% (内部音量0.05 = 現状の5%)
     wasStoppedByClear: false,
 
@@ -382,13 +383,20 @@
           ctx.resume();
         }
         // クリア中でなければBGMを自動再生開始
-        if (!AppState.isSolved) {
-          this.startBgm();
+        if (!AppState.isSolved && this.bgmSliderPercent > 0) {
+          this.startBgm().then((started) => {
+            // 再生に成功した後だけ解除する。失敗した場合は次の操作で再試行する。
+            if (started) {
+              window.removeEventListener('pointerdown', unlockAudio, true);
+              window.removeEventListener('touchstart', unlockAudio, true);
+              window.removeEventListener('keydown', unlockAudio, true);
+            }
+          });
         }
-        window.removeEventListener('pointerdown', unlockAudio);
-        window.removeEventListener('keydown', unlockAudio);
       };
       window.addEventListener('pointerdown', unlockAudio, { capture: true });
+      // Pointer Events が使われない環境向けの Android / WebView フォールバック
+      window.addEventListener('touchstart', unlockAudio, { capture: true, passive: true });
       window.addEventListener('keydown', unlockAudio, { capture: true });
     },
 
@@ -417,16 +425,23 @@
     },
 
     startBgm() {
-      if (!DOM.bgmAudio || this.bgmPlaying) return;
-      DOM.bgmAudio.play().then(() => {
+      if (!DOM.bgmAudio || this.bgmPlaying || this.bgmStarting) {
+        return Promise.resolve(this.bgmPlaying);
+      }
+      this.bgmStarting = true;
+      return DOM.bgmAudio.play().then(() => {
         this.bgmPlaying = true;
         this.isDuckedForClear = false;
         if (DOM.btnToggleBgmIcon) {
           DOM.btnToggleBgmIcon.textContent = '🎵';
           DOM.btnToggleBgm.style.opacity = '1';
         }
+        return true;
       }).catch(() => {
         // まだユーザー操作が足りない場合は次回再試行
+        return false;
+      }).finally(() => {
+        this.bgmStarting = false;
       });
     },
 
