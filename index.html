@@ -67,6 +67,23 @@
       box-shadow: 0 2px 12px rgba(0,0,0,0.5);
     }
 
+    @media (hover: none) and (pointer: coarse) {
+      header {
+        justify-content: flex-start;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x;
+        scrollbar-width: none;
+      }
+      header::-webkit-scrollbar {
+        display: none;
+      }
+      header > * {
+        flex-shrink: 0;
+      }
+    }
+
     .header-left {
       display: flex;
       align-items: center;
@@ -822,6 +839,6 @@
   <!-- PeerJS 公式CDN -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <!-- ゲーム本体ロジック -->
-  <script src="main.js?v=volume2"></script>
+  <script src="main.js?v=mobile-controls1"></script>
 </body>
 </html>

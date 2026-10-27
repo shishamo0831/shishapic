@@ -424,8 +424,12 @@
     },
 
     getBgmVolume() {
-      // 全体のBGM上限を少し上げ、Android端末はさらに大きめにする。
-      const maxVolume = /Android/i.test(navigator.userAgent) ? 0.45 : 0.15;
+      const userAgent = navigator.userAgent || '';
+      const isAndroid = /Android/i.test(userAgent);
+      const isIPad = /iPad/i.test(userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      // Androidはスライダー値をそのまま適用し、PCは80%、iPadは15%を上限にする。
+      const maxVolume = isAndroid ? 1.0 : (isIPad ? 0.15 : 0.80);
       return (this.bgmSliderPercent / 100) * maxVolume;
     },
 
@@ -1560,6 +1564,8 @@
     activeArrowKey: null,
     arrowInitialTimeout: null,
     arrowRepeatTimer: null,
+    outsideTapCandidate: false,
+    outsideTapStart: { x: 0, y: 0 },
 
     init() {
       window.addEventListener('contextmenu', (e) => {
@@ -1854,8 +1860,13 @@
       e.preventDefault();
       const touches = e.touches;
 
+      if (touches.length >= 2) {
+        this.outsideTapCandidate = false;
+      }
+
       // ★クリア達成時: 画面タップで「答えの画像 ⇄ 完成盤面」をトグル表示★
       if (AppState.isSolved && touches.length === 1) {
+        this.outsideTapCandidate = false;
         toggleClearViewMode();
         return;
       }
@@ -1865,6 +1876,8 @@
         this.dragTool = AppState.currentTool;
         const touch = touches[0];
         const gridPos = this.screenToGrid(touch.clientX, touch.clientY);
+        this.outsideTapCandidate = !gridPos.isValid;
+        this.outsideTapStart = { x: touch.clientX, y: touch.clientY };
         if (gridPos.isValid && !AppState.isSolved) {
           AppState.focusedCell.row = gridPos.row;
           AppState.focusedCell.col = gridPos.col;
@@ -1901,6 +1914,18 @@
     handleTouchMove(e) {
       e.preventDefault();
       const touches = e.touches;
+
+      if (touches.length >= 2) {
+        this.outsideTapCandidate = false;
+      } else if (touches.length === 1 && this.outsideTapCandidate) {
+        const touch = touches[0];
+        if (Math.hypot(
+          touch.clientX - this.outsideTapStart.x,
+          touch.clientY - this.outsideTapStart.y
+        ) > 10) {
+          this.outsideTapCandidate = false;
+        }
+      }
 
       if (touches.length === 1 && this.isPointerDown && !this.isPanning) {
         const touch = touches[0];
@@ -1957,6 +1982,12 @@
 
     handleTouchEnd(e) {
       if (e.touches.length === 0) {
+        if (e.type === 'touchend' && this.outsideTapCandidate && !AppState.isSolved) {
+          const nextTool = AppState.currentTool === 'fill' ? 'cross' : 'fill';
+          selectTool(nextTool);
+          showToast(nextTool === 'fill' ? '塗りモードに切り替えました' : 'バツ印モードに切り替えました');
+        }
+        this.outsideTapCandidate = false;
         this.isPointerDown = false;
         this.isPanning = false;
         this.dragTool = null;
