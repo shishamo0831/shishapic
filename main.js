@@ -364,8 +364,6 @@
      ========================================================================== */
   const SoundManager = {
     ctx: null,
-    bgmSource: null,
-    bgmGainNode: null,
     isMuted: false,
     bgmPlaying: false,
     bgmStarting: false,
@@ -385,18 +383,20 @@
       if (DOM.bgmVolumeLabel) {
         DOM.bgmVolumeLabel.textContent = `${this.bgmSliderPercent}%`;
       }
+
+      // 初期音量を設定 (音量0にせず、最初から適正音量に準備)
+      this.applyBgmVolume(this.getBgmVolume());
       this.updateBgmIcon();
 
-      // ブラウザのAutoplay制限回避: 最初のユーザー操作でAudioContextとBGMを確実に起動
-      const unlockAudio = () => {
+      // 初回操作によるAudioContext & BGM起動 (iOS Safari では直接 play() が必須)
+      const unlockAudio = (e) => {
         const ctx = this.getAudioContext();
         if (ctx && ctx.state === 'suspended') {
           ctx.resume();
         }
-        this.setupBgmNodes();
 
-        // 停止中かつクリア状態でなければBGMを自動再生
-        if (!this.bgmPlaying && !AppState.isSolved && this.bgmSliderPercent > 0) {
+        // 停止中かつクリア状態でなければBGM再生を開始
+        if (DOM.bgmAudio && DOM.bgmAudio.paused && !AppState.isSolved && this.bgmSliderPercent > 0) {
           this.startBgm().then((started) => {
             if (started) {
               window.removeEventListener('pointerdown', unlockAudio, true);
@@ -412,6 +412,22 @@
       window.addEventListener('touchstart', unlockAudio, { capture: true, passive: true });
       window.addEventListener('click', unlockAudio, { capture: true });
       window.addEventListener('keydown', unlockAudio, { capture: true });
+
+      // audioタグ自身のイベントを監視して常に状態を完全同期
+      if (DOM.bgmAudio) {
+        DOM.bgmAudio.addEventListener('play', () => {
+          this.bgmPlaying = true;
+          this.updateBgmIcon();
+        });
+        DOM.bgmAudio.addEventListener('pause', () => {
+          this.bgmPlaying = false;
+          this.updateBgmIcon();
+        });
+        DOM.bgmAudio.addEventListener('ended', () => {
+          this.bgmPlaying = false;
+          this.updateBgmIcon();
+        });
+      }
     },
 
     getAudioContext() {
@@ -424,28 +440,12 @@
       return this.ctx;
     },
 
-    setupBgmNodes() {
-      if (this.bgmGainNode || !DOM.bgmAudio) return;
-      const ctx = this.getAudioContext();
-      if (!ctx) return;
-      try {
-        if (!this.bgmSource) {
-          this.bgmSource = ctx.createMediaElementSource(DOM.bgmAudio);
-        }
-        this.bgmGainNode = ctx.createGain();
-        this.bgmSource.connect(this.bgmGainNode);
-        this.bgmGainNode.connect(ctx.destination);
-      } catch (e) {
-        console.warn('Web Audio node setup failed (will use fallback):', e);
-      }
-    },
-
     getBgmVolume() {
       const userAgent = navigator.userAgent || '';
       const isAndroid = /Android/i.test(userAgent);
       const isIPad = /iPad/i.test(userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      // iPadはスピーカー音量が強いため上限0.07、Androidは0.45、PCは0.35に設定して上品で控えめな音量に
+      // iPadはスピーカー出力が強いため上限0.07、Androidは0.45、PCは0.35に設定
       const maxVolume = isAndroid ? 0.45 : (isIPad ? 0.07 : 0.35);
       return (this.bgmSliderPercent / 100) * maxVolume;
     },
@@ -457,17 +457,9 @@
           DOM.bgmAudio.volume = vol;
         } catch (e) {}
       }
-      if (this.bgmGainNode && this.ctx) {
-        try {
-          this.bgmGainNode.gain.setValueAtTime(vol, this.ctx.currentTime);
-        } catch (e) {}
-      }
     },
 
     getCurrentBgmVolume() {
-      if (this.bgmGainNode) {
-        return this.bgmGainNode.gain.value;
-      }
       if (DOM.bgmAudio) {
         return DOM.bgmAudio.volume;
       }
@@ -476,7 +468,8 @@
 
     updateBgmIcon() {
       if (!DOM.btnToggleBgm) return;
-      if (this.bgmPlaying) {
+      const isPlaying = DOM.bgmAudio ? !DOM.bgmAudio.paused : this.bgmPlaying;
+      if (isPlaying) {
         if (DOM.btnToggleBgmIcon) DOM.btnToggleBgmIcon.textContent = '🎵';
         DOM.btnToggleBgm.style.opacity = '1';
       } else {
@@ -528,28 +521,34 @@
       } catch (e) {}
 
       // 音量が0より大きく、停止中かつクリア状態でなければ自動再生
-      if (this.bgmSliderPercent > 0 && !this.bgmPlaying && !AppState.isSolved && DOM.bgmAudio && DOM.bgmAudio.paused) {
+      if (this.bgmSliderPercent > 0 && (!DOM.bgmAudio || DOM.bgmAudio.paused) && !AppState.isSolved) {
         this.startBgm();
       }
     },
 
     startBgm() {
-      if (!DOM.bgmAudio || this.bgmPlaying || this.bgmStarting) {
-        return Promise.resolve(this.bgmPlaying);
+      if (!DOM.bgmAudio || this.bgmStarting) {
+        return Promise.resolve(DOM.bgmAudio ? !DOM.bgmAudio.paused : false);
       }
-      this.setupBgmNodes();
-      this.bgmStarting = true;
+      // すでに再生中なら何もしない
+      if (!DOM.bgmAudio.paused) {
+        this.bgmPlaying = true;
+        this.updateBgmIcon();
+        return Promise.resolve(true);
+      }
 
+      this.bgmStarting = true;
       const actualVolume = this.isDuckedForClear ? (this.getBgmVolume() * 0.3) : this.getBgmVolume();
       this.applyBgmVolume(actualVolume);
 
       return DOM.bgmAudio.play().then(() => {
         this.bgmPlaying = true;
         this.isDuckedForClear = false;
+        this.applyBgmVolume(actualVolume);
         this.updateBgmIcon();
         return true;
       }).catch((err) => {
-        console.warn('startBgm play rejected:', err);
+        console.warn('BGM play rejected:', err);
         this.bgmPlaying = false;
         this.updateBgmIcon();
         return false;
@@ -561,7 +560,7 @@
     // ★クリア時に音楽を無音ではなく「約30%」の音量に落とす (ダッキング)★
     duckBgmForClear() {
       this.cancelBgmFade();
-      if (DOM.bgmAudio && this.bgmPlaying) {
+      if (DOM.bgmAudio && !DOM.bgmAudio.paused) {
         this.isDuckedForClear = true;
         const normalVolume = this.getBgmVolume();
         this.applyBgmVolume(normalVolume * 0.3);
@@ -573,29 +572,29 @@
       const normalVolume = this.getBgmVolume();
       if (this.isDuckedForClear) {
         this.isDuckedForClear = false;
-        if (DOM.bgmAudio && this.bgmPlaying) {
+        if (DOM.bgmAudio && !DOM.bgmAudio.paused) {
           this.fadeBgmVolumeTo(normalVolume, 1800);
         }
-      } else if (!this.bgmPlaying && !AppState.isSolved && this.bgmSliderPercent > 0) {
-        this.applyBgmVolume(0);
-        this.startBgm().then((started) => {
-          if (started) {
-            this.fadeBgmVolumeTo(normalVolume, 1800);
-          }
-        });
+      } else if (DOM.bgmAudio && !DOM.bgmAudio.paused) {
+        this.applyBgmVolume(normalVolume);
       }
     },
 
     toggleBgm() {
       this.cancelBgmFade();
       if (!DOM.bgmAudio) return;
-      if (this.bgmPlaying) {
+
+      // 実際の再生状態 (DOM.bgmAudio.paused) を直接判定！
+      const isCurrentlyPlaying = !DOM.bgmAudio.paused;
+
+      if (isCurrentlyPlaying) {
         DOM.bgmAudio.pause();
         this.bgmPlaying = false;
         this.wasStoppedByClear = false;
         this.updateBgmIcon();
         showToast('BGMを一時停止しました');
       } else {
+        // 停止中なら即座に1回で再生！
         if (this.bgmSliderPercent <= 0) {
           this.setBgmSliderPercent(50);
         }
