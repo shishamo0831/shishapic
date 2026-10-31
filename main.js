@@ -400,7 +400,40 @@
       window.addEventListener('keydown', unlockAudio, { capture: true });
     },
 
+    bgmFadeTimer: null,
+
+    fadeBgmVolumeTo(targetVolume, durationMs = 1800) {
+      this.cancelBgmFade();
+      if (!DOM.bgmAudio) return;
+
+      const startVolume = DOM.bgmAudio.volume;
+      const startTime = performance.now();
+
+      this.bgmFadeTimer = setInterval(() => {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(1, elapsed / durationMs);
+        // easeOutCubic (スムーズに立ち上がるイージング)
+        const ease = 1 - Math.pow(1 - progress, 3);
+        const current = startVolume + (targetVolume - startVolume) * ease;
+        if (DOM.bgmAudio) {
+          DOM.bgmAudio.volume = Math.max(0, Math.min(1, current));
+        }
+        if (progress >= 1) {
+          this.cancelBgmFade();
+          if (DOM.bgmAudio) DOM.bgmAudio.volume = targetVolume;
+        }
+      }, 30);
+    },
+
+    cancelBgmFade() {
+      if (this.bgmFadeTimer) {
+        clearInterval(this.bgmFadeTimer);
+        this.bgmFadeTimer = null;
+      }
+    },
+
     setBgmSliderPercent(percent) {
+      this.cancelBgmFade();
       this.bgmSliderPercent = Math.max(0, Math.min(100, Math.round(percent)));
       const actualVolume = this.getBgmVolume();
 
@@ -456,6 +489,7 @@
 
     // ★クリア時に音楽を無音ではなく「約30%」の音量に落とす (ダッキング)★
     duckBgmForClear() {
+      this.cancelBgmFade();
       if (DOM.bgmAudio && this.bgmPlaying) {
         this.isDuckedForClear = true;
         const normalVolume = this.getBgmVolume();
@@ -463,21 +497,25 @@
       }
     },
 
-    // ★次の問題開始時に音楽の音量を100%に復帰★
+    // ★次の問題開始時に音楽の音量を徐々に100%に復帰 (フェードイン)★
     resumeBgmAfterClear() {
+      const normalVolume = this.getBgmVolume();
       if (this.isDuckedForClear) {
         this.isDuckedForClear = false;
-        const normalVolume = this.getBgmVolume();
-        if (DOM.bgmAudio) {
-          DOM.bgmAudio.volume = normalVolume;
+        if (DOM.bgmAudio && this.bgmPlaying) {
+          // 急に大きくならず、約1.8秒かけて滑らかにフェードイン
+          this.fadeBgmVolumeTo(normalVolume, 1800);
         }
-      }
-      if (!this.bgmPlaying && !AppState.isSolved && this.bgmSliderPercent > 0) {
-        this.startBgm();
+      } else if (!this.bgmPlaying && !AppState.isSolved && this.bgmSliderPercent > 0) {
+        if (DOM.bgmAudio) DOM.bgmAudio.volume = 0;
+        this.startBgm().then(() => {
+          this.fadeBgmVolumeTo(normalVolume, 1800);
+        });
       }
     },
 
     toggleBgm() {
+      this.cancelBgmFade();
       if (!DOM.bgmAudio) return;
       if (this.bgmPlaying) {
         DOM.bgmAudio.pause();
@@ -645,7 +683,7 @@
       }
     },
 
-    // クリア時の温かみのあるマリンバ風アルペジオ
+    // ★クリア時の華やかな祝賀ファンファーレチャイム★
     playClearChime() {
       if (this.isMuted) return;
       const ctx = this.getAudioContext();
@@ -653,24 +691,36 @@
       if (ctx.state === 'suspended') ctx.resume();
 
       const now = ctx.currentTime;
-      const freqs = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
-      freqs.forEach((freq, idx) => {
-        const time = now + idx * 0.11;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+      const notes = [
+        { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.22, type: 'sine' },      // C4
+        { freq: 329.63, delay: 0.08, dur: 0.40, gain: 0.22, type: 'sine' },      // E4
+        { freq: 392.00, delay: 0.16, dur: 0.45, gain: 0.24, type: 'sine' },      // G4
+        { freq: 523.25, delay: 0.24, dur: 0.65, gain: 0.28, type: 'sine' },      // C5
+        { freq: 659.25, delay: 0.32, dur: 0.70, gain: 0.26, type: 'triangle' },  // E5
+        { freq: 783.99, delay: 0.40, dur: 0.80, gain: 0.28, type: 'triangle' },  // G5
+        { freq: 1046.50, delay: 0.48, dur: 1.10, gain: 0.30, type: 'sine' },     // C6 (主音高音ベル)
+        // 煌めくベル装飾
+        { freq: 1318.51, delay: 0.54, dur: 0.85, gain: 0.16, type: 'sine' },     // E6
+        { freq: 2093.00, delay: 0.60, dur: 0.95, gain: 0.12, type: 'sine' }      // C7
+      ];
 
-        osc.type = 'sine';
+      notes.forEach(({ freq, delay, dur, gain: maxGain, type }) => {
+        const time = now + delay;
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        osc.type = type;
         osc.frequency.setValueAtTime(freq, time);
 
-        gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.linearRampToValueAtTime(0.28, time + 0.004);
-        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.38);
+        gainNode.gain.setValueAtTime(0.0001, time);
+        gainNode.gain.linearRampToValueAtTime(maxGain, time + 0.006);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
 
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
 
         osc.start(time);
-        osc.stop(time + 0.4);
+        osc.stop(time + dur + 0.05);
       });
     }
   };
@@ -1081,8 +1131,10 @@
     DOM.toolbar.style.opacity = '1';
     DOM.toolbar.style.pointerEvents = 'auto';
 
-    // クリアでダッキングしていたBGMを100%音量に復帰
+    // クリアでダッキングしていたBGMを徐々に通常音量へ復帰 (フェードイン)
     SoundManager.resumeBgmAfterClear();
+    particles.length = 0;
+    clearBannerTextTimer = 0;
 
     resetView();
 
@@ -1167,7 +1219,7 @@
     DOM.toolbar.style.opacity = '0';
     DOM.toolbar.style.pointerEvents = 'none';
 
-    spawnConfetti();
+    triggerGrandCelebration();
     SoundManager.duckBgmForClear(); // BGMを約30%にダッキング
     SoundManager.playClearChime();
 
@@ -2053,23 +2105,127 @@
      9. Canvas 描画エンジン (Retina対応 & クリア時元ベクター画像クロスフェード)
      ========================================================================== */
   const particles = [];
-  function spawnConfetti() {
-    particles.length = 0;
-    // スーパーピクロス風コンフェッティ: ゴールド・ブルー・赤・白・緑
-    const colors = ['#e8c050', '#5a7acc', '#cc4444', '#f0f0e8', '#80a060', '#f0a030'];
-    for (let i = 0; i < 110; i++) {
+  let clearBannerTextTimer = 0;
+
+  function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+    let rot = (Math.PI / 2) * 3;
+    let x = cx;
+    let y = cy;
+    const step = Math.PI / spikes;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerRadius);
+    for (let i = 0; i < spikes; i++) {
+      x = cx + Math.cos(rot) * outerRadius;
+      y = cy + Math.sin(rot) * outerRadius;
+      ctx.lineTo(x, y);
+      rot += step;
+
+      x = cx + Math.cos(rot) * innerRadius;
+      y = cy + Math.sin(rot) * innerRadius;
+      ctx.lineTo(x, y);
+      rot += step;
+    }
+    ctx.lineTo(cx, cy - outerRadius);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function spawnConfetti(originX, originY, count = 100, pattern = 'cannon') {
+    const cw = DOM.canvas.width / (window.devicePixelRatio || 1);
+    const ch = DOM.canvas.height / (window.devicePixelRatio || 1);
+    const ox = originX !== undefined ? originX : cw / 2;
+    const oy = originY !== undefined ? originY : ch * 0.45;
+
+    const colors = [
+      '#ffd700', '#ffeb3b', '#ff4757', '#2ed573', '#1e90ff',
+      '#ffa502', '#ffffff', '#ff6b81', '#a55eea', '#70a1ff'
+    ];
+    const types = ['ribbon', 'star', 'sparkle', 'circle'];
+
+    for (let i = 0; i < count; i++) {
+      let vx, vy, gravity;
+      if (pattern === 'left-cannon') {
+        vx = Math.random() * 15 + 4;
+        vy = -(Math.random() * 19 + 12);
+        gravity = 0.36;
+      } else if (pattern === 'right-cannon') {
+        vx = -(Math.random() * 15 + 4);
+        vy = -(Math.random() * 19 + 12);
+        gravity = 0.36;
+      } else if (pattern === 'burst') {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = Math.random() * 16 + 2;
+        vx = Math.cos(angle) * spd;
+        vy = Math.sin(angle) * spd - 3;
+        gravity = 0.28;
+      } else {
+        vx = (Math.random() - 0.5) * 22;
+        vy = -(Math.random() * 18 + 8);
+        gravity = 0.34;
+      }
+
       particles.push({
-        x: DOM.canvas.width / 2 / (window.devicePixelRatio || 1),
-        y: DOM.canvas.height / 2 / (window.devicePixelRatio || 1),
-        vx: (Math.random() - 0.5) * 18,
-        vy: (Math.random() - 0.8) * 20,
-        size: Math.random() * 8 + 4,
+        type: types[Math.floor(Math.random() * types.length)],
+        x: ox,
+        y: oy,
+        vx: vx,
+        vy: vy,
+        gravity: gravity,
+        size: Math.random() * 8 + 5,
         color: colors[Math.floor(Math.random() * colors.length)],
         rotation: Math.random() * 360,
-        vr: (Math.random() - 0.5) * 16,
-        alpha: 1
+        vr: (Math.random() - 0.5) * 14,
+        alpha: 1,
+        fadeSpeed: Math.random() * 0.005 + 0.005
       });
     }
+  }
+
+  function spawnShockwave(x, y) {
+    particles.push({
+      type: 'shockwave',
+      x: x,
+      y: y,
+      radius: 10,
+      growth: 16,
+      lineWidth: 6,
+      color: '#ffd700',
+      alpha: 1,
+      fadeSpeed: 0.02
+    });
+  }
+
+  // ★豪華なクリア祝賀演出 (キャノン砲・星・花火の連続バースト)★
+  function triggerGrandCelebration() {
+    particles.length = 0;
+    const cw = DOM.canvas.width / (window.devicePixelRatio || 1);
+    const ch = DOM.canvas.height / (window.devicePixelRatio || 1);
+
+    clearBannerTextTimer = Date.now();
+
+    // 1. 中央からの爆発 ＋ 黄金の衝撃波リング
+    spawnShockwave(cw / 2, ch * 0.45);
+    spawnConfetti(cw / 2, ch * 0.45, 120, 'burst');
+
+    // 2. 左右下部キャノン砲からの盛大な打ち上げ
+    spawnConfetti(cw * 0.08, ch * 0.92, 90, 'left-cannon');
+    spawnConfetti(cw * 0.92, ch * 0.92, 90, 'right-cannon');
+
+    // 3. 0.45秒後の第二波花火
+    setTimeout(() => {
+      if (AppState.isSolved) {
+        spawnConfetti(cw * 0.28, ch * 0.35, 60, 'burst');
+        spawnConfetti(cw * 0.72, ch * 0.35, 60, 'burst');
+      }
+    }, 450);
+
+    // 4. 0.95秒後の上空からのキラキラ余韻
+    setTimeout(() => {
+      if (AppState.isSolved) {
+        spawnConfetti(cw / 2, ch * 0.12, 70, 'burst');
+      }
+    }, 950);
   }
 
   function resizeCanvas() {
@@ -2310,52 +2466,66 @@
       ctx.restore();
     }
 
-    // 8. 相手プレイヤーのカーソル描画
+    // 8. ★相手プレイヤーが選択中のセル枠描画 (カーソル本体やHost/Guest文字は非表示にし、選択中セルのみ表示)★
     if (!isSolved && remoteCursor.active && Date.now() - remoteCursor.lastUpdate < 8000) {
-      const rx = remoteCursor.worldX;
-      const ry = remoteCursor.worldY;
-      const isRemoteHost = !AppState.isHost;
-      const cursorColor = isRemoteHost ? '#5a7acc' : '#cc4444';
-      const cursorName = isRemoteHost ? 'Host 🔵' : 'Guest 🔴';
-      const invScale = 1 / camera.scale;
-
-      // 照準枠
-      if (remoteCursor.row >= 0 && remoteCursor.col >= 0) {
+      if (remoteCursor.row >= 0 && remoteCursor.col >= 0 && puzzle && remoteCursor.row < puzzle.height && remoteCursor.col < puzzle.width) {
+        const isRemoteHost = !AppState.isHost;
+        const borderColor = isRemoteHost ? '#4d88ff' : '#ff4d4d';
+        const fillColor = isRemoteHost ? 'rgba(77, 136, 255, 0.22)' : 'rgba(255, 77, 77, 0.22)';
+        const invScale = 1 / camera.scale;
         const hx = bX + remoteCursor.col * cs;
         const hy = bY + remoteCursor.row * cs;
-        ctx.strokeStyle = cursorColor;
+
+        ctx.save();
+        // 相手が選択中のセルをうっすらハイライト
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(hx + 1, hy + 1, cs - 2, cs - 2);
+
+        // 明確でスタイリッシュな選択枠
+        ctx.strokeStyle = borderColor;
         ctx.lineWidth = 2.5 * invScale;
         ctx.strokeRect(hx + 1, hy + 1, cs - 2, cs - 2);
+        ctx.restore();
       }
-
-      // カーソルポインター
-      ctx.fillStyle = cursorColor;
-      ctx.beginPath();
-      ctx.arc(rx, ry, 6 * invScale, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ラベル
-      const fontSize = Math.max(10, Math.round(12 * invScale));
-      ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(cursorName, rx + 10 * invScale, ry - 4 * invScale);
     }
 
     ctx.restore();
 
-    // 9. クリア時の祝賀花火・紙吹雪パーティクル
+    // 9. ★クリア時の祝賀花火・紙吹雪・星・スパークル & STAGE CLEARバナー描画★
     if (particles.length > 0) {
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
+
+        if (p.type === 'shockwave') {
+          p.radius += p.growth;
+          p.growth *= 0.97;
+          p.lineWidth = Math.max(1, p.lineWidth * 0.97);
+          p.alpha -= p.fadeSpeed;
+          if (p.alpha <= 0) {
+            particles.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = p.lineWidth;
+          ctx.globalAlpha = Math.max(0, p.alpha);
+          ctx.shadowColor = '#ffd700';
+          ctx.shadowBlur = 12;
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
+
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.45; // 重力
+        p.vy += p.gravity || 0.34;
+        p.vx *= 0.985;
         p.rotation += p.vr;
-        p.alpha -= 0.011;
+        p.alpha -= p.fadeSpeed || 0.008;
 
-        if (p.alpha <= 0) {
+        if (p.alpha <= 0 || p.y > ch + 40) {
           particles.splice(i, 1);
           continue;
         }
@@ -2364,8 +2534,70 @@
         ctx.translate(p.x, p.y);
         ctx.rotate((p.rotation * Math.PI) / 180);
         ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.alpha;
-        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.globalAlpha = Math.max(0, p.alpha);
+
+        if (p.type === 'ribbon') {
+          const scaleX = Math.cos(p.rotation * 0.04);
+          ctx.fillRect(-p.size * scaleX, -p.size * 0.4, p.size * 2 * scaleX, p.size * 0.8);
+        } else if (p.type === 'star') {
+          drawStar(ctx, 0, 0, 5, p.size, p.size * 0.45);
+        } else if (p.type === 'sparkle') {
+          const s = p.size;
+          ctx.beginPath();
+          ctx.moveTo(0, -s);
+          ctx.quadraticCurveTo(0, 0, s, 0);
+          ctx.quadraticCurveTo(0, 0, 0, s);
+          ctx.quadraticCurveTo(0, 0, -s, 0);
+          ctx.quadraticCurveTo(0, 0, 0, -s);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    // ★クリア時のきらめく「STAGE CLEAR!」バナー演出 (Canvas上部に約2.8秒間表示)★
+    if (isSolved && clearBannerTextTimer > 0) {
+      const elapsed = Date.now() - clearBannerTextTimer;
+      if (elapsed < 3200) {
+        let alpha = 1;
+        let scale = 1;
+        if (elapsed < 400) {
+          const prog = elapsed / 400;
+          scale = 0.6 + 0.4 * Math.sin(prog * Math.PI * 0.5);
+          alpha = prog;
+        } else if (elapsed > 2400) {
+          alpha = 1 - (elapsed - 2400) / 800;
+          scale = 1;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.translate(cw / 2, 72);
+        ctx.scale(scale, scale);
+
+        // バナーのグラデーション背景
+        const bannerGrad = ctx.createLinearGradient(-160, 0, 160, 0);
+        bannerGrad.addColorStop(0, 'rgba(40, 26, 8, 0)');
+        bannerGrad.addColorStop(0.2, 'rgba(40, 26, 8, 0.88)');
+        bannerGrad.addColorStop(0.5, 'rgba(56, 36, 10, 0.95)');
+        bannerGrad.addColorStop(0.8, 'rgba(40, 26, 8, 0.88)');
+        bannerGrad.addColorStop(1, 'rgba(40, 26, 8, 0)');
+        ctx.fillStyle = bannerGrad;
+        ctx.fillRect(-175, -24, 350, 48);
+
+        ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = '#fffae6';
+        ctx.fillText('✨ STAGE CLEAR! ✨', 0, 0);
         ctx.restore();
       }
     }

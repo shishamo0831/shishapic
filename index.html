@@ -165,8 +165,7 @@
     }
     .status-dot.waiting {
       background: #d4a840;
-      animation: pulse 1.5s infinite;
-    }
+      }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
@@ -693,9 +692,10 @@
           <span>Picross Co-op</span>
         </div>
         <span id="role-badge" class="badge badge-waiting">Connecting...</span>
-      </div>
-
-      <div class="header-audio-controls">
+        <div class="status-indicator">
+          <div id="status-dot" class="status-dot waiting"></div>
+          <span id="status-text">待機中 (接続初期化中...)</span>
+        </div>
         <div class="sound-control-group" title="BGM音量調整">
           <button id="btn-toggle-bgm" title="BGM 再生/停止">
             <span id="btn-toggle-bgm-icon">🎵</span>
@@ -706,13 +706,6 @@
         <button id="btn-toggle-sound" title="効果音 ON/OFF" style="padding: 6px 10px; font-size: 13px;">
           <span id="btn-toggle-sound-icon">🔊</span>
         </button>
-      </div>
-
-      <div class="header-center">
-        <div class="status-indicator">
-          <div id="status-dot" class="status-dot waiting"></div>
-          <span id="status-text">待機中 (接続初期化中...)</span>
-        </div>
       </div>
 
       <div class="header-right">
