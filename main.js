@@ -2751,6 +2751,8 @@
 
   let toastTimer = null;
   function showToast(msg, persistent = false, isClear = false) {
+    // 枠外タップによるモード切替は無言で行う。
+    if (/^(塗りモード|バツ印モード)に切り替えました$/.test(String(msg))) return;
     if (toastTimer) {
       clearTimeout(toastTimer);
       toastTimer = null;
