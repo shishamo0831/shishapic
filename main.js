@@ -750,7 +750,7 @@
       }
     },
 
-    // ★クリア時の華やかな祝賀ファンファーレチャイム★
+    // ★クリア時の祝賀チャイム★
     playClearChime() {
       if (this.isMuted) return;
       const ctx = this.getAudioContext();
@@ -758,9 +758,40 @@
       if (ctx.state === 'suspended') ctx.resume();
 
       const isIPad = this.isIPadDevice();
-      // iPad環境のみクリアチャイムをさらに静かで優しい音量に抑制 (0.015)。他環境は従来のseScale (0.55) を維持
-      const chimeScale = isIPad ? 0.015 : this.getSeVolumeScale();
       const now = ctx.currentTime;
+
+      if (isIPad) {
+        // ★iPad専用: 高音ベル(E6/C7)や三角波の鋭い倍音をカットし、耳に優しい極小音量のサイン波アルペジオに限定★
+        const iPadNotes = [
+          { freq: 261.63, delay: 0.00, dur: 0.35, gain: 0.007 }, // C4
+          { freq: 329.63, delay: 0.09, dur: 0.35, gain: 0.007 }, // E4
+          { freq: 392.00, delay: 0.18, dur: 0.40, gain: 0.008 }, // G4
+          { freq: 523.25, delay: 0.27, dur: 0.50, gain: 0.009 }  // C5 (すべて純粋なサイン波で耳障りな倍音ゼロ)
+        ];
+
+        iPadNotes.forEach(({ freq, delay, dur, gain: maxGain }) => {
+          const time = now + delay;
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, time);
+
+          gainNode.gain.setValueAtTime(0.0001, time);
+          gainNode.gain.linearRampToValueAtTime(maxGain, time + 0.008);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+          osc.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          osc.start(time);
+          osc.stop(time + dur + 0.05);
+        });
+        return;
+      }
+
+      // ★iPad以外の環境 (PC / Android): 従来の華やかなファンファーレ設定を一切変更せず維持★
+      const seScale = this.getSeVolumeScale();
       const notes = [
         { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.22, type: 'sine' },      // C4
         { freq: 329.63, delay: 0.08, dur: 0.40, gain: 0.22, type: 'sine' },      // E4
@@ -783,7 +814,7 @@
         osc.frequency.setValueAtTime(freq, time);
 
         gainNode.gain.setValueAtTime(0.0001, time);
-        gainNode.gain.linearRampToValueAtTime(maxGain * chimeScale, time + 0.006);
+        gainNode.gain.linearRampToValueAtTime(maxGain * seScale, time + 0.006);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
 
         osc.connect(gainNode);
