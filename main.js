@@ -440,13 +440,19 @@
       return this.ctx;
     },
 
+    isIPadDevice() {
+      const ua = navigator.userAgent || '';
+      if (/iPad/i.test(ua)) return true;
+      const isMacTouch = (navigator.platform === 'MacIntel' || ua.includes('Macintosh')) && (navigator.maxTouchPoints > 1);
+      return Boolean(isMacTouch);
+    },
+
     getBgmVolume() {
       const userAgent = navigator.userAgent || '';
       const isAndroid = /Android/i.test(userAgent);
-      const isIPad = /iPad/i.test(userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      // iPadはスピーカー出力が強いため上限0.07、Androidは0.45、PCは0.35に設定
-      const maxVolume = isAndroid ? 0.45 : (isIPad ? 0.07 : 0.35);
+      const isIPad = this.isIPadDevice();
+      // iPad環境のみ音量をさらに抑制 (上限0.035)。iPad以外の環境 (PC: 0.35 / Android: 0.45) は一切変更せず維持
+      const maxVolume = isAndroid ? 0.45 : (isIPad ? 0.035 : 0.35);
       return (this.bgmSliderPercent / 100) * maxVolume;
     },
 
@@ -617,13 +623,11 @@
       return this.isMuted;
     },
 
-    // SE (効果音) の端末別マスターボリュームスケール (iPadでの耳障り感を抑制)
+    // SE (効果音) の端末別マスターボリュームスケール
     getSeVolumeScale() {
-      const userAgent = navigator.userAgent || '';
-      const isIPad = /iPad/i.test(userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      // iPadはスピーカーが近く高音圧になりやすいため0.35倍 (マイルドで上品な木彫り音)、PC等も0.55倍に調整
-      return isIPad ? 0.35 : 0.55;
+      const isIPad = this.isIPadDevice();
+      // iPad環境のみ大幅に音量を控えめ (0.10倍) に抑制。iPad以外の環境 (0.55倍) は一切変更せず維持
+      return isIPad ? 0.10 : 0.55;
     },
 
     // マス編集時の木彫り効果音
