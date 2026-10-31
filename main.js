@@ -451,8 +451,8 @@
       const userAgent = navigator.userAgent || '';
       const isAndroid = /Android/i.test(userAgent);
       const isIPad = this.isIPadDevice();
-      // iPad環境のみ音量をさらに抑制 (上限0.035)。iPad以外の環境 (PC: 0.35 / Android: 0.45) は一切変更せず維持
-      const maxVolume = isAndroid ? 0.45 : (isIPad ? 0.035 : 0.35);
+      // iPad環境のみ音量をさらに抑制 (上限0.035)。Android: 0.45、PC: 0.7
+      const maxVolume = isAndroid ? 0.45 : (isIPad ? 0.035 : 0.7);
       return (this.bgmSliderPercent / 100) * maxVolume;
     },
 
@@ -626,8 +626,8 @@
     // SE (効果音) の端末別マスターボリュームスケール
     getSeVolumeScale() {
       const isIPad = this.isIPadDevice();
-      // iPad環境のみ大幅に音量を控えめ (0.10倍) に抑制。iPad以外の環境 (0.55倍) は一切変更せず維持
-      return isIPad ? 0.10 : 0.55;
+      // iPad環境のみ大幅に音量を控えめ (0.05倍) に抑制。iPad以外の環境 (0.55倍) は一切変更せず維持
+      return isIPad ? 0.05 : 0.55;
     },
 
     // マス編集時の木彫り効果音
