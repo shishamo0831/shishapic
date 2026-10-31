@@ -1321,6 +1321,12 @@
       DOM.clearPuzzleTitle.classList.remove('revealed');
     }
     DOM.clearBanner.classList.add('show');
+    // 答えを見るまで「次の問題へ」を無効化（誤操作防止）
+    if (DOM.btnBannerNext) {
+      DOM.btnBannerNext.disabled = true;
+      DOM.btnBannerNext.style.opacity = '0.4';
+      DOM.btnBannerNext.style.cursor = 'not-allowed';
+    }
     DOM.toolbar.style.opacity = '0';
     DOM.toolbar.style.pointerEvents = 'none';
 
