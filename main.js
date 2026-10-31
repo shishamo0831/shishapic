@@ -1134,7 +1134,6 @@
     // クリアでダッキングしていたBGMを徐々に通常音量へ復帰 (フェードイン)
     SoundManager.resumeBgmAfterClear();
     particles.length = 0;
-    clearBannerTextTimer = 0;
 
     resetView();
 
@@ -1225,24 +1224,17 @@
 
     // ★2人で協力プレイ中（相手と接続中）の場合のみ、協力クリア数を計上＆永続保存★
     if (AppState.isConnected && AppState.puzzle) {
-      const isNew = CoopStatsManager.recordClear(AppState.puzzle.name);
-      const cleared = CoopStatsManager.getClearedCount();
-      const total = CoopStatsManager.getTotalCount();
+      CoopStatsManager.recordClear(AppState.puzzle.name);
 
       // 相手端末へもリストを送信して相互同期
       sendNetworkMessage({
         type: 'SYNC_COOP_LIST',
         clearedList: Array.from(CoopStatsManager.clearedSet)
       });
-
-      if (isNew) {
-        showToast(`🎉 2人で協力クリア達成！ (${total.toLocaleString()}問中 ${cleared.toLocaleString()}問達成)`);
-      } else {
-        showToast('🎉 STAGE CLEAR! 「答えを見る」で元画像を表示');
-      }
-    } else {
-      showToast('🎉 STAGE CLEAR! 「答えを見る」で元画像を表示');
     }
+
+    // 元のポップアップと重複しないよう「✨ STAGE CLEAR! ✨」のみを表示し、次のポップアップが出るまで残す
+    showToast('✨ STAGE CLEAR! ✨', true, true);
   }
 
   function toggleClearViewMode() {
@@ -2105,7 +2097,6 @@
      9. Canvas 描画エンジン (Retina対応 & クリア時元ベクター画像クロスフェード)
      ========================================================================== */
   const particles = [];
-  let clearBannerTextTimer = 0;
 
   function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
     let rot = (Math.PI / 2) * 3;
@@ -2201,8 +2192,6 @@
     particles.length = 0;
     const cw = DOM.canvas.width / (window.devicePixelRatio || 1);
     const ch = DOM.canvas.height / (window.devicePixelRatio || 1);
-
-    clearBannerTextTimer = Date.now();
 
     // 1. 中央からの爆発 ＋ 黄金の衝撃波リング
     spawnShockwave(cw / 2, ch * 0.45);
@@ -2560,48 +2549,6 @@
       }
     }
 
-    // ★クリア時のきらめく「STAGE CLEAR!」バナー演出 (Canvas上部に約2.8秒間表示)★
-    if (isSolved && clearBannerTextTimer > 0) {
-      const elapsed = Date.now() - clearBannerTextTimer;
-      if (elapsed < 3200) {
-        let alpha = 1;
-        let scale = 1;
-        if (elapsed < 400) {
-          const prog = elapsed / 400;
-          scale = 0.6 + 0.4 * Math.sin(prog * Math.PI * 0.5);
-          alpha = prog;
-        } else if (elapsed > 2400) {
-          alpha = 1 - (elapsed - 2400) / 800;
-          scale = 1;
-        }
-
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-        ctx.translate(cw / 2, 72);
-        ctx.scale(scale, scale);
-
-        // バナーのグラデーション背景
-        const bannerGrad = ctx.createLinearGradient(-160, 0, 160, 0);
-        bannerGrad.addColorStop(0, 'rgba(40, 26, 8, 0)');
-        bannerGrad.addColorStop(0.2, 'rgba(40, 26, 8, 0.88)');
-        bannerGrad.addColorStop(0.5, 'rgba(56, 36, 10, 0.95)');
-        bannerGrad.addColorStop(0.8, 'rgba(40, 26, 8, 0.88)');
-        bannerGrad.addColorStop(1, 'rgba(40, 26, 8, 0)');
-        ctx.fillStyle = bannerGrad;
-        ctx.fillRect(-175, -24, 350, 48);
-
-        ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        ctx.shadowColor = '#ffd700';
-        ctx.shadowBlur = 16;
-        ctx.fillStyle = '#fffae6';
-        ctx.fillText('✨ STAGE CLEAR! ✨', 0, 0);
-        ctx.restore();
-      }
-    }
-
     requestAnimationFrame(render);
   }
 
@@ -2623,12 +2570,27 @@
     DOM.statusDot.className = 'status-dot ' + (state === 'online' ? 'online' : 'waiting');
   }
 
-  function showToast(msg) {
+  let toastTimer = null;
+  function showToast(msg, persistent = false, isClear = false) {
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
     DOM.actionToast.textContent = msg;
+    if (isClear) {
+      DOM.actionToast.classList.add('clear-popup');
+    } else {
+      DOM.actionToast.classList.remove('clear-popup');
+    }
     DOM.actionToast.classList.add('show');
-    setTimeout(() => {
-      DOM.actionToast.classList.remove('show');
-    }, 2800);
+
+    if (!persistent) {
+      toastTimer = setTimeout(() => {
+        DOM.actionToast.classList.remove('show');
+        DOM.actionToast.classList.remove('clear-popup');
+        toastTimer = null;
+      }, 2800);
+    }
   }
 
   function selectTool(tool) {
