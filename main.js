@@ -635,9 +635,8 @@
       if (this.isMuted) return;
       const ctx = this.getAudioContext();
       if (!ctx) return;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
+      // suspended状態(iOS未ロック)はスキップ。resume後に溜まった音が鳴るのを防ぐ
+      if (ctx.state === 'suspended') return;
 
       const seScale = this.getSeVolumeScale();
       const now = ctx.currentTime;
@@ -755,7 +754,7 @@
       if (this.isMuted) return;
       const ctx = this.getAudioContext();
       if (!ctx) return;
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state === 'suspended') return;
 
       const isIPad = this.isIPadDevice();
       const now = ctx.currentTime;
