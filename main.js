@@ -2207,7 +2207,6 @@
         if (e.type === 'touchend' && this.outsideTapCandidate && !this.outsideHoldTriggered && !AppState.isSolved) {
           const nextTool = AppState.currentTool === 'fill' ? 'cross' : 'fill';
           selectTool(nextTool);
-          showToast(nextTool === 'fill' ? '塗りモードに切り替えました' : 'バツ印モードに切り替えました');
         }
         this.outsideTapCandidate = false;
         this.outsideHoldTriggered = false;
