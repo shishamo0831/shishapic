@@ -761,12 +761,18 @@
       const now = ctx.currentTime;
 
       if (isIPad) {
-        // ★iPad専用: 高音ベル(E6/C7)や三角波の鋭い倍音をカットし、耳に優しい極小音量のサイン波アルペジオに限定★
+        // ★iPad専用: 装飾ベル音(E6/C7)も排除せず残し、全体をごく小さな優しい音量でマイルドに演奏★
         const iPadNotes = [
-          { freq: 261.63, delay: 0.00, dur: 0.35, gain: 0.007 }, // C4
-          { freq: 329.63, delay: 0.09, dur: 0.35, gain: 0.007 }, // E4
-          { freq: 392.00, delay: 0.18, dur: 0.40, gain: 0.008 }, // G4
-          { freq: 523.25, delay: 0.27, dur: 0.50, gain: 0.009 }  // C5 (すべて純粋なサイン波で耳障りな倍音ゼロ)
+          { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.007 }, // C4
+          { freq: 329.63, delay: 0.08, dur: 0.40, gain: 0.007 }, // E4
+          { freq: 392.00, delay: 0.16, dur: 0.45, gain: 0.008 }, // G4
+          { freq: 523.25, delay: 0.24, dur: 0.65, gain: 0.009 }, // C5
+          { freq: 659.25, delay: 0.32, dur: 0.70, gain: 0.007 }, // E5
+          { freq: 783.99, delay: 0.40, dur: 0.80, gain: 0.007 }, // G5
+          { freq: 1046.50, delay: 0.48, dur: 1.00, gain: 0.008 }, // C6
+          // 煌めく装飾ベル音 (排除せず、ごく控えめな極小音量で優しく響かせる)
+          { freq: 1318.51, delay: 0.54, dur: 0.75, gain: 0.0035 }, // E6
+          { freq: 2093.00, delay: 0.60, dur: 0.85, gain: 0.0025 }  // C7
         ];
 
         iPadNotes.forEach(({ freq, delay, dur, gain: maxGain }) => {
