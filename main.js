@@ -617,6 +617,15 @@
       return this.isMuted;
     },
 
+    // SE (効果音) の端末別マスターボリュームスケール (iPadでの耳障り感を抑制)
+    getSeVolumeScale() {
+      const userAgent = navigator.userAgent || '';
+      const isIPad = /iPad/i.test(userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      // iPadはスピーカーが近く高音圧になりやすいため0.35倍 (マイルドで上品な木彫り音)、PC等も0.55倍に調整
+      return isIPad ? 0.35 : 0.55;
+    },
+
     // マス編集時の木彫り効果音
     playWoodChisel(targetState) {
       if (this.isMuted) return;
@@ -626,6 +635,7 @@
         ctx.resume();
       }
 
+      const seScale = this.getSeVolumeScale();
       const now = ctx.currentTime;
       // 連続で彫った際に機械的にならず、自然な木目の揺らぎを出す (±7%)
       const jitter = 0.93 + Math.random() * 0.14;
@@ -640,7 +650,7 @@
         osc.frequency.exponentialRampToValueAtTime(125 * jitter, now + 0.035);
 
         gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(0.42, now + 0.002);
+        gain.gain.linearRampToValueAtTime(0.42 * seScale, now + 0.002);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
 
         osc.connect(gain);
@@ -656,7 +666,7 @@
         subOsc.frequency.exponentialRampToValueAtTime(105 * jitter, now + 0.04);
 
         subGain.gain.setValueAtTime(0.0001, now);
-        subGain.gain.linearRampToValueAtTime(0.18, now + 0.002);
+        subGain.gain.linearRampToValueAtTime(0.18 * seScale, now + 0.002);
         subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
 
         subOsc.connect(subGain);
@@ -665,7 +675,7 @@
         subOsc.stop(now + 0.06);
 
         // 3. 刃先が木に当たった瞬間の木質アタックノイズ (12ms)
-        this.playWoodCrack(ctx, now, jitter);
+        this.playWoodCrack(ctx, now, jitter, seScale);
 
       } else if (targetState === 2) {
         // ★【✕印】: 軽快な木製マーキング音「コツッ」★
@@ -676,7 +686,7 @@
         osc.frequency.exponentialRampToValueAtTime(200 * jitter, now + 0.02);
 
         gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(0.22, now + 0.002);
+        gain.gain.linearRampToValueAtTime(0.22 * seScale, now + 0.002);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
 
         osc.connect(gain);
@@ -693,7 +703,7 @@
         osc.frequency.exponentialRampToValueAtTime(95 * jitter, now + 0.025);
 
         gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(0.2, now + 0.002);
+        gain.gain.linearRampToValueAtTime(0.20 * seScale, now + 0.002);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
 
         osc.connect(gain);
@@ -704,7 +714,7 @@
     },
 
     // 木材打撃特有の「カッ」という瞬間的な木質アタックノイズ
-    playWoodCrack(ctx, now, jitter) {
+    playWoodCrack(ctx, now, jitter, seScale = 1.0) {
       try {
         const bufferSize = Math.floor(ctx.sampleRate * 0.012); // 12ms
         const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -722,7 +732,7 @@
         filter.Q.setValueAtTime(3.2, now);
 
         const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.setValueAtTime(0.18 * seScale, now);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.012);
 
         noise.connect(filter);
@@ -743,6 +753,7 @@
       if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume();
 
+      const seScale = this.getSeVolumeScale();
       const now = ctx.currentTime;
       const notes = [
         { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.22, type: 'sine' },      // C4
@@ -766,7 +777,7 @@
         osc.frequency.setValueAtTime(freq, time);
 
         gainNode.gain.setValueAtTime(0.0001, time);
-        gainNode.gain.linearRampToValueAtTime(maxGain, time + 0.006);
+        gainNode.gain.linearRampToValueAtTime(maxGain * seScale, time + 0.006);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
 
         osc.connect(gainNode);
