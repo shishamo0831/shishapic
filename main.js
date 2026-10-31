@@ -757,7 +757,9 @@
       if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume();
 
-      const seScale = this.getSeVolumeScale();
+      const isIPad = this.isIPadDevice();
+      // iPad環境のみクリアチャイムをさらに静かで優しい音量に抑制 (0.015)。他環境は従来のseScale (0.55) を維持
+      const chimeScale = isIPad ? 0.015 : this.getSeVolumeScale();
       const now = ctx.currentTime;
       const notes = [
         { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.22, type: 'sine' },      // C4
@@ -781,7 +783,7 @@
         osc.frequency.setValueAtTime(freq, time);
 
         gainNode.gain.setValueAtTime(0.0001, time);
-        gainNode.gain.linearRampToValueAtTime(maxGain * seScale, time + 0.006);
+        gainNode.gain.linearRampToValueAtTime(maxGain * chimeScale, time + 0.006);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, time + dur);
 
         osc.connect(gainNode);
