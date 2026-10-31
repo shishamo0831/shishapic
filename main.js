@@ -1353,6 +1353,12 @@
       DOM.btnToggleViewText.textContent = isImage ? '盤面表示' : '答えを見る';
       DOM.btnToggleViewIcon.textContent = isImage ? '▦' : '🖼️';
     }
+    // 答えを見たら「次の問題へ」を有効化
+    if (isImage && DOM.btnBannerNext) {
+      DOM.btnBannerNext.disabled = false;
+      DOM.btnBannerNext.style.opacity = '';
+      DOM.btnBannerNext.style.cursor = '';
+    }
     showToast(isImage ? '答えの元画像を表示中...' : '完成盤面を表示中');
   }
 
