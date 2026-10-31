@@ -1393,6 +1393,16 @@
     DOM.welcomeModal.style.display = 'none';
 
     const hostPeerId = `picross-p2p-${roomId}-host`;
+    // iPadなどのタッチ端末は部屋を作らず、PCホストの起動を待ってゲスト接続する。
+    const isTablet = /iPad|Android|Tablet/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isTablet) {
+      AppState.isHost = false;
+      setRoleUI(false);
+      updateUIStatus('waiting', '待機中 (PC版の起動待ち)');
+      initAsGuest(hostPeerId);
+      return;
+    }
     updateUIStatus('connecting', 'ホスト接続を試行中...');
 
     let hostPeer = null;
@@ -1454,12 +1464,28 @@
       AppState.peer = guestPeer;
       const conn = guestPeer.connect(hostPeerId, { reliable: true });
       setupConnectionHandlers(conn);
+      conn.on('error', () => scheduleGuestReconnect(hostPeerId));
+      conn.on('close', () => {
+        if (!AppState.isConnected) scheduleGuestReconnect(hostPeerId);
+      });
     });
 
     guestPeer.on('error', (err) => {
       console.error('Guest Peer error:', err);
-      updateUIStatus('error', 'ホストへの接続に失敗しました');
+      updateUIStatus('waiting', '待機中 (PC版の起動待ち)');
+      scheduleGuestReconnect(hostPeerId);
     });
+  }
+
+  let guestReconnectTimer = null;
+  function scheduleGuestReconnect(hostPeerId) {
+    if (guestReconnectTimer || AppState.isConnected) return;
+    updateUIStatus('waiting', '待機中 (PC版の起動待ち)');
+    guestReconnectTimer = setTimeout(() => {
+      guestReconnectTimer = null;
+      if (AppState.peer && !AppState.isConnected) AppState.peer.destroy();
+      initAsGuest(hostPeerId);
+    }, 3000);
   }
 
   function handleIncomingConnection(conn) {
@@ -1728,6 +1754,8 @@
     arrowRepeatTimer: null,
     outsideTapCandidate: false,
     outsideTapStart: { x: 0, y: 0 },
+    outsideHoldTimer: null,
+    outsideHoldTriggered: false,
 
     init() {
       window.addEventListener('contextmenu', (e) => {
@@ -1759,6 +1787,23 @@
         this.pressedKeys.clear();
         this.stopArrowRepeat();
       });
+    },
+
+    cancelOutsideHold() {
+      if (this.outsideHoldTimer) clearTimeout(this.outsideHoldTimer);
+      this.outsideHoldTimer = null;
+    },
+
+    startOutsideHold(x, y) {
+      this.cancelOutsideHold();
+      this.outsideHoldTriggered = false;
+      this.outsideTapStart = { x, y };
+      this.outsideHoldTimer = setTimeout(() => {
+        this.outsideHoldTriggered = true;
+        this.outsideTapCandidate = false;
+        resetView();
+        showToast('表示を初期状態に戻しました');
+      }, 3000);
     },
 
     stopArrowRepeat() {
@@ -1950,6 +1995,8 @@
       this.dragTool = (e.button === 2) ? 'cross' : AppState.currentTool;
 
       const gridPos = this.screenToGrid(e.clientX, e.clientY);
+      this.outsideTapCandidate = !gridPos.isValid;
+      if (!gridPos.isValid) this.startOutsideHold(e.clientX, e.clientY);
       if (gridPos.isValid && !AppState.isSolved) {
         AppState.focusedCell.row = gridPos.row;
         AppState.focusedCell.col = gridPos.col;
@@ -1969,6 +2016,10 @@
     },
 
     handleMouseMove(e) {
+      if (this.outsideHoldTimer && Math.hypot(e.clientX - this.outsideTapStart.x, e.clientY - this.outsideTapStart.y) > 10) {
+        this.cancelOutsideHold();
+        this.outsideTapCandidate = false;
+      }
       if (this.isPanning) {
         const dx = e.clientX - this.lastMousePos.x;
         const dy = e.clientY - this.lastMousePos.y;
@@ -2003,6 +2054,11 @@
     },
 
     handleMouseUp() {
+      this.cancelOutsideHold();
+      if (this.outsideHoldTriggered) {
+        this.outsideHoldTriggered = false;
+        this.outsideTapCandidate = false;
+      }
       this.isPointerDown = false;
       this.isPanning = false;
       this.dragTool = null;
@@ -2040,6 +2096,7 @@
         const gridPos = this.screenToGrid(touch.clientX, touch.clientY);
         this.outsideTapCandidate = !gridPos.isValid;
         this.outsideTapStart = { x: touch.clientX, y: touch.clientY };
+        if (!gridPos.isValid) this.startOutsideHold(touch.clientX, touch.clientY);
         if (gridPos.isValid && !AppState.isSolved) {
           AppState.focusedCell.row = gridPos.row;
           AppState.focusedCell.col = gridPos.col;
@@ -2078,6 +2135,7 @@
       const touches = e.touches;
 
       if (touches.length >= 2) {
+        this.cancelOutsideHold();
         this.outsideTapCandidate = false;
       } else if (touches.length === 1 && this.outsideTapCandidate) {
         const touch = touches[0];
@@ -2085,6 +2143,7 @@
           touch.clientX - this.outsideTapStart.x,
           touch.clientY - this.outsideTapStart.y
         ) > 10) {
+          this.cancelOutsideHold();
           this.outsideTapCandidate = false;
         }
       }
@@ -2144,12 +2203,14 @@
 
     handleTouchEnd(e) {
       if (e.touches.length === 0) {
-        if (e.type === 'touchend' && this.outsideTapCandidate && !AppState.isSolved) {
+        this.cancelOutsideHold();
+        if (e.type === 'touchend' && this.outsideTapCandidate && !this.outsideHoldTriggered && !AppState.isSolved) {
           const nextTool = AppState.currentTool === 'fill' ? 'cross' : 'fill';
           selectTool(nextTool);
           showToast(nextTool === 'fill' ? '塗りモードに切り替えました' : 'バツ印モードに切り替えました');
         }
         this.outsideTapCandidate = false;
+        this.outsideHoldTriggered = false;
         this.isPointerDown = false;
         this.isPanning = false;
         this.dragTool = null;
@@ -2675,7 +2736,8 @@
      ========================================================================== */
   function setRoleUI(isHost) {
     if (isHost) {
-      DOM.roleBadge.textContent = 'HOST (PC)';
+      DOM.roleBadge.textContent = /iPad|Android|Tablet/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'HOST (iPad)' : 'HOST (PC)';
       DOM.roleBadge.className = 'badge badge-host';
     } else {
       DOM.roleBadge.textContent = 'GUEST (iPad)';
