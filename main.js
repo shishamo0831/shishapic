@@ -364,65 +364,125 @@
      ========================================================================== */
   const SoundManager = {
     ctx: null,
+    bgmSource: null,
+    bgmGainNode: null,
     isMuted: false,
     bgmPlaying: false,
     bgmStarting: false,
-    bgmSliderPercent: 50, // デフォルト: 50% (内部音量0.05 = 現状の5%)
+    bgmSliderPercent: 50,
     wasStoppedByClear: false,
+    bgmFadeTimer: null,
 
     init() {
       // 保存されたスライダー値またはデフォルト50%を反映
       const savedPercent = localStorage.getItem('picross_bgm_slider_percent');
       const percent = (savedPercent !== null) ? parseInt(savedPercent, 10) : 50;
-      this.setBgmSliderPercent(percent);
+      this.bgmSliderPercent = Math.max(0, Math.min(100, Math.round(percent)));
 
-      // ブラウザのAutoplay制限回避: 最初のユーザー操作でAudioContextとBGMを起動
+      if (DOM.bgmVolume) {
+        DOM.bgmVolume.value = this.bgmSliderPercent.toString();
+      }
+      if (DOM.bgmVolumeLabel) {
+        DOM.bgmVolumeLabel.textContent = `${this.bgmSliderPercent}%`;
+      }
+      this.updateBgmIcon();
+
+      // ブラウザのAutoplay制限回避: 最初のユーザー操作でAudioContextとBGMを確実に起動
       const unlockAudio = () => {
         const ctx = this.getAudioContext();
         if (ctx && ctx.state === 'suspended') {
           ctx.resume();
         }
-        // クリア中でなければBGMを自動再生開始
-        if (!AppState.isSolved && this.bgmSliderPercent > 0) {
+        this.setupBgmNodes();
+
+        // 停止中かつクリア状態でなければBGMを自動再生
+        if (!this.bgmPlaying && !AppState.isSolved && this.bgmSliderPercent > 0) {
           this.startBgm().then((started) => {
-            // 再生に成功した後だけ解除する。失敗した場合は次の操作で再試行する。
             if (started) {
               window.removeEventListener('pointerdown', unlockAudio, true);
               window.removeEventListener('touchstart', unlockAudio, true);
+              window.removeEventListener('click', unlockAudio, true);
               window.removeEventListener('keydown', unlockAudio, true);
             }
           });
         }
       };
+
       window.addEventListener('pointerdown', unlockAudio, { capture: true });
-      // Pointer Events が使われない環境向けの Android / WebView フォールバック
       window.addEventListener('touchstart', unlockAudio, { capture: true, passive: true });
+      window.addEventListener('click', unlockAudio, { capture: true });
       window.addEventListener('keydown', unlockAudio, { capture: true });
     },
 
-    bgmFadeTimer: null,
-
-    fadeBgmVolumeTo(targetVolume, durationMs = 1800) {
-      this.cancelBgmFade();
-      if (!DOM.bgmAudio) return;
-
-      const startVolume = DOM.bgmAudio.volume;
-      const startTime = performance.now();
-
-      this.bgmFadeTimer = setInterval(() => {
-        const elapsed = performance.now() - startTime;
-        const progress = Math.min(1, elapsed / durationMs);
-        // easeOutCubic (スムーズに立ち上がるイージング)
-        const ease = 1 - Math.pow(1 - progress, 3);
-        const current = startVolume + (targetVolume - startVolume) * ease;
-        if (DOM.bgmAudio) {
-          DOM.bgmAudio.volume = Math.max(0, Math.min(1, current));
+    getAudioContext() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          this.ctx = new AudioCtx();
         }
-        if (progress >= 1) {
-          this.cancelBgmFade();
-          if (DOM.bgmAudio) DOM.bgmAudio.volume = targetVolume;
+      }
+      return this.ctx;
+    },
+
+    setupBgmNodes() {
+      if (this.bgmGainNode || !DOM.bgmAudio) return;
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+      try {
+        if (!this.bgmSource) {
+          this.bgmSource = ctx.createMediaElementSource(DOM.bgmAudio);
         }
-      }, 30);
+        this.bgmGainNode = ctx.createGain();
+        this.bgmSource.connect(this.bgmGainNode);
+        this.bgmGainNode.connect(ctx.destination);
+      } catch (e) {
+        console.warn('Web Audio node setup failed (will use fallback):', e);
+      }
+    },
+
+    getBgmVolume() {
+      const userAgent = navigator.userAgent || '';
+      const isAndroid = /Android/i.test(userAgent);
+      const isIPad = /iPad/i.test(userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      // iPadはスピーカー音量が強いため上限0.07、Androidは0.45、PCは0.35に設定して上品で控えめな音量に
+      const maxVolume = isAndroid ? 0.45 : (isIPad ? 0.07 : 0.35);
+      return (this.bgmSliderPercent / 100) * maxVolume;
+    },
+
+    applyBgmVolume(volume) {
+      const vol = Math.max(0, Math.min(1, volume));
+      if (DOM.bgmAudio) {
+        try {
+          DOM.bgmAudio.volume = vol;
+        } catch (e) {}
+      }
+      if (this.bgmGainNode && this.ctx) {
+        try {
+          this.bgmGainNode.gain.setValueAtTime(vol, this.ctx.currentTime);
+        } catch (e) {}
+      }
+    },
+
+    getCurrentBgmVolume() {
+      if (this.bgmGainNode) {
+        return this.bgmGainNode.gain.value;
+      }
+      if (DOM.bgmAudio) {
+        return DOM.bgmAudio.volume;
+      }
+      return this.getBgmVolume();
+    },
+
+    updateBgmIcon() {
+      if (!DOM.btnToggleBgm) return;
+      if (this.bgmPlaying) {
+        if (DOM.btnToggleBgmIcon) DOM.btnToggleBgmIcon.textContent = '🎵';
+        DOM.btnToggleBgm.style.opacity = '1';
+      } else {
+        if (DOM.btnToggleBgmIcon) DOM.btnToggleBgmIcon.textContent = '🎵';
+        DOM.btnToggleBgm.style.opacity = '0.4';
+      }
     },
 
     cancelBgmFade() {
@@ -432,14 +492,31 @@
       }
     },
 
+    fadeBgmVolumeTo(targetVolume, durationMs = 1800) {
+      this.cancelBgmFade();
+      const startVolume = this.getCurrentBgmVolume();
+      const startTime = performance.now();
+
+      this.bgmFadeTimer = setInterval(() => {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(1, elapsed / durationMs);
+        const ease = 1 - Math.pow(1 - progress, 3);
+        const current = startVolume + (targetVolume - startVolume) * ease;
+        this.applyBgmVolume(current);
+        if (progress >= 1) {
+          this.cancelBgmFade();
+          this.applyBgmVolume(targetVolume);
+        }
+      }, 30);
+    },
+
     setBgmSliderPercent(percent) {
       this.cancelBgmFade();
       this.bgmSliderPercent = Math.max(0, Math.min(100, Math.round(percent)));
       const actualVolume = this.getBgmVolume();
 
-      if (DOM.bgmAudio) {
-        DOM.bgmAudio.volume = this.isDuckedForClear ? (actualVolume * 0.3) : actualVolume;
-      }
+      this.applyBgmVolume(this.isDuckedForClear ? (actualVolume * 0.3) : actualVolume);
+
       if (DOM.bgmVolume) {
         DOM.bgmVolume.value = this.bgmSliderPercent.toString();
       }
@@ -456,31 +533,25 @@
       }
     },
 
-    getBgmVolume() {
-      const userAgent = navigator.userAgent || '';
-      const isAndroid = /Android/i.test(userAgent);
-      const isIPad = /iPad/i.test(userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      // Androidはスライダー値をそのまま適用し、PCは80%、iPadは15%を上限にする。
-      const maxVolume = isAndroid ? 1.0 : (isIPad ? 0.15 : 0.80);
-      return (this.bgmSliderPercent / 100) * maxVolume;
-    },
-
     startBgm() {
       if (!DOM.bgmAudio || this.bgmPlaying || this.bgmStarting) {
         return Promise.resolve(this.bgmPlaying);
       }
+      this.setupBgmNodes();
       this.bgmStarting = true;
+
+      const actualVolume = this.isDuckedForClear ? (this.getBgmVolume() * 0.3) : this.getBgmVolume();
+      this.applyBgmVolume(actualVolume);
+
       return DOM.bgmAudio.play().then(() => {
         this.bgmPlaying = true;
         this.isDuckedForClear = false;
-        if (DOM.btnToggleBgmIcon) {
-          DOM.btnToggleBgmIcon.textContent = '🎵';
-          DOM.btnToggleBgm.style.opacity = '1';
-        }
+        this.updateBgmIcon();
         return true;
-      }).catch(() => {
-        // まだユーザー操作が足りない場合は次回再試行
+      }).catch((err) => {
+        console.warn('startBgm play rejected:', err);
+        this.bgmPlaying = false;
+        this.updateBgmIcon();
         return false;
       }).finally(() => {
         this.bgmStarting = false;
@@ -493,7 +564,7 @@
       if (DOM.bgmAudio && this.bgmPlaying) {
         this.isDuckedForClear = true;
         const normalVolume = this.getBgmVolume();
-        DOM.bgmAudio.volume = normalVolume * 0.3; // 30%音量
+        this.applyBgmVolume(normalVolume * 0.3);
       }
     },
 
@@ -503,13 +574,14 @@
       if (this.isDuckedForClear) {
         this.isDuckedForClear = false;
         if (DOM.bgmAudio && this.bgmPlaying) {
-          // 急に大きくならず、約1.8秒かけて滑らかにフェードイン
           this.fadeBgmVolumeTo(normalVolume, 1800);
         }
       } else if (!this.bgmPlaying && !AppState.isSolved && this.bgmSliderPercent > 0) {
-        if (DOM.bgmAudio) DOM.bgmAudio.volume = 0;
-        this.startBgm().then(() => {
-          this.fadeBgmVolumeTo(normalVolume, 1800);
+        this.applyBgmVolume(0);
+        this.startBgm().then((started) => {
+          if (started) {
+            this.fadeBgmVolumeTo(normalVolume, 1800);
+          }
         });
       }
     },
@@ -521,38 +593,20 @@
         DOM.bgmAudio.pause();
         this.bgmPlaying = false;
         this.wasStoppedByClear = false;
-        if (DOM.btnToggleBgmIcon) {
-          DOM.btnToggleBgmIcon.textContent = '🎵';
-          DOM.btnToggleBgm.style.opacity = '0.4';
-        }
+        this.updateBgmIcon();
         showToast('BGMを一時停止しました');
       } else {
-        // 音量が0なら50%にする
         if (this.bgmSliderPercent <= 0) {
           this.setBgmSliderPercent(50);
         }
-        DOM.bgmAudio.play().then(() => {
-          this.bgmPlaying = true;
-          this.wasStoppedByClear = false;
-          if (DOM.btnToggleBgmIcon) {
-            DOM.btnToggleBgmIcon.textContent = '🎵';
-            DOM.btnToggleBgm.style.opacity = '1';
+        this.startBgm().then((started) => {
+          if (started) {
+            showToast('BGMを再生しました');
+          } else {
+            showToast('BGMの再生に失敗しました（画面をタップしてください）');
           }
-          showToast('BGMを再生しました');
-        }).catch(() => {
-          showToast('BGMの再生に失敗しました');
         });
       }
-    },
-
-    getAudioContext() {
-      if (!this.ctx) {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          this.ctx = new AudioCtx();
-        }
-      }
-      return this.ctx;
     },
 
     toggleMute() {
