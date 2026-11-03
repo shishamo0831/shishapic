@@ -244,6 +244,13 @@
       }
     },
 
+    replaceList(incomingList) {
+      if (!Array.isArray(incomingList)) return;
+      this.clearedSet = new Set(incomingList.filter(name => typeof name === 'string' && name.length > 0));
+      this.save();
+      this.updateUI();
+    },
+
     save() {
       try {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(Array.from(this.clearedSet)));
@@ -334,8 +341,8 @@
             return;
           }
 
-          // リストをマージ復元
-          CoopStatsManager.mergeList(list);
+          // バックアップ内容で置き換えて復元（空リストなら0問に戻す）
+          CoopStatsManager.replaceList(list);
 
           if (parsed && typeof parsed.bgmSliderPercent === 'number') {
             SoundManager.setBgmSliderPercent(parsed.bgmSliderPercent);
@@ -345,7 +352,8 @@
           if (AppState.isConnected) {
             sendNetworkMessage({
               type: 'SYNC_COOP_LIST',
-              clearedList: Array.from(CoopStatsManager.clearedSet)
+              clearedList: Array.from(CoopStatsManager.clearedSet),
+              replace: true
             });
           }
 
@@ -1669,7 +1677,11 @@
 
       case 'SYNC_COOP_LIST':
         if (Array.isArray(msg.clearedList)) {
-          CoopStatsManager.mergeList(msg.clearedList);
+          if (msg.replace === true) {
+            CoopStatsManager.replaceList(msg.clearedList);
+          } else {
+            CoopStatsManager.mergeList(msg.clearedList);
+          }
         }
         break;
 
