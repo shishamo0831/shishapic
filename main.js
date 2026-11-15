@@ -641,8 +641,8 @@
     // SE (効果音) の端末別マスターボリュームスケール
     getSeVolumeScale() {
       const isIPad = this.isIPadDevice();
-      // iPad環境は控えめ (0.22倍)。iPad以外の環境 (0.55倍) は一切変更せず維持
-      return isIPad ? 0.22 : 0.55;
+      // iPad環境は控えめ (0.15倍)。iPad以外の環境 (0.55倍) は一切変更せず維持
+      return isIPad ? 0.15 : 0.55;
     },
 
     // マス編集時の木彫り効果音
@@ -783,16 +783,16 @@
       if (isIPad) {
         // ★iPad専用: 装飾ベル音(E6/C7)も排除せず残し、しっかり聞こえる音量で演奏★
         const iPadNotes = [
-          { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.009 }, // C4
-          { freq: 329.63, delay: 0.08, dur: 0.40, gain: 0.009 }, // E4
-          { freq: 392.00, delay: 0.16, dur: 0.45, gain: 0.010 }, // G4
-          { freq: 523.25, delay: 0.24, dur: 0.65, gain: 0.012 }, // C5
-          { freq: 659.25, delay: 0.32, dur: 0.70, gain: 0.009 }, // E5
-          { freq: 783.99, delay: 0.40, dur: 0.80, gain: 0.009 }, // G5
-          { freq: 1046.50, delay: 0.48, dur: 1.00, gain: 0.010 }, // C6
+          { freq: 261.63, delay: 0.00, dur: 0.40, gain: 0.006 }, // C4
+          { freq: 329.63, delay: 0.08, dur: 0.40, gain: 0.006 }, // E4
+          { freq: 392.00, delay: 0.16, dur: 0.45, gain: 0.007 }, // G4
+          { freq: 523.25, delay: 0.24, dur: 0.65, gain: 0.008 }, // C5
+          { freq: 659.25, delay: 0.32, dur: 0.70, gain: 0.006 }, // E5
+          { freq: 783.99, delay: 0.40, dur: 0.80, gain: 0.006 }, // G5
+          { freq: 1046.50, delay: 0.48, dur: 1.00, gain: 0.007 }, // C6
           // 煌めく装飾ベル音 (控えめだが聞こえる音量)
-          { freq: 1318.51, delay: 0.54, dur: 0.75, gain: 0.005 }, // E6
-          { freq: 2093.00, delay: 0.60, dur: 0.85, gain: 0.004 }  // C7
+          { freq: 1318.51, delay: 0.54, dur: 0.75, gain: 0.0035 }, // E6
+          { freq: 2093.00, delay: 0.60, dur: 0.85, gain: 0.0025 }  // C7
         ];
 
         iPadNotes.forEach(({ freq, delay, dur, gain: maxGain }) => {
