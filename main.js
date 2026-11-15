@@ -641,8 +641,8 @@
     // SE (効果音) の端末別マスターボリュームスケール
     getSeVolumeScale() {
       const isIPad = this.isIPadDevice();
-      // iPad環境は控えめ (0.15倍)。iPad以外の環境 (0.55倍) は一切変更せず維持
-      return isIPad ? 0.15 : 0.55;
+      // iPad環境は控えめ (0.075倍)。iPad以外の環境 (0.55倍) は一切変更せず維持
+      return isIPad ? 0.075 : 0.55;
     },
 
     // マス編集時の木彫り効果音
