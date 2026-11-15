@@ -397,29 +397,36 @@
       this.updateBgmIcon();
 
       // 初回操作によるAudioContext & BGM起動 (iOS Safari では直接 play() が必須)
-      const unlockAudio = (e) => {
+      // ★ AudioContext resume は常時リスナーとして維持し、BGM起動リスナーだけを分離 ★
+      const keepAliveAudioCtx = () => {
         const ctx = this.getAudioContext();
         if (ctx && ctx.state === 'suspended') {
           ctx.resume();
         }
+      };
+      // AudioContext の resume は永続リスナー (スリープ復帰対策: 絶対に除去しない)
+      window.addEventListener('pointerdown', keepAliveAudioCtx, { capture: true });
+      window.addEventListener('touchstart', keepAliveAudioCtx, { capture: true, passive: true });
 
+      const unlockBgm = (e) => {
+        keepAliveAudioCtx();
         // 停止中かつクリア状態でなければBGM再生を開始
         if (DOM.bgmAudio && DOM.bgmAudio.paused && !AppState.isSolved && this.bgmSliderPercent > 0) {
           this.startBgm().then((started) => {
             if (started) {
-              window.removeEventListener('pointerdown', unlockAudio, true);
-              window.removeEventListener('touchstart', unlockAudio, true);
-              window.removeEventListener('click', unlockAudio, true);
-              window.removeEventListener('keydown', unlockAudio, true);
+              window.removeEventListener('pointerdown', unlockBgm, true);
+              window.removeEventListener('touchstart', unlockBgm, true);
+              window.removeEventListener('click', unlockBgm, true);
+              window.removeEventListener('keydown', unlockBgm, true);
             }
           });
         }
       };
 
-      window.addEventListener('pointerdown', unlockAudio, { capture: true });
-      window.addEventListener('touchstart', unlockAudio, { capture: true, passive: true });
-      window.addEventListener('click', unlockAudio, { capture: true });
-      window.addEventListener('keydown', unlockAudio, { capture: true });
+      window.addEventListener('pointerdown', unlockBgm, { capture: true });
+      window.addEventListener('touchstart', unlockBgm, { capture: true, passive: true });
+      window.addEventListener('click', unlockBgm, { capture: true });
+      window.addEventListener('keydown', unlockBgm, { capture: true });
 
       // audioタグ自身のイベントを監視して常に状態を完全同期
       if (DOM.bgmAudio) {
@@ -643,8 +650,11 @@
       if (this.isMuted) return;
       const ctx = this.getAudioContext();
       if (!ctx) return;
-      // suspended状態(iOS未ロック)はスキップ。resume後に溜まった音が鳴るのを防ぐ
-      if (ctx.state === 'suspended') return;
+      // suspended状態ならresumeを試みる (iPadスリープ復帰対策)
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+        return;
+      }
 
       const seScale = this.getSeVolumeScale();
       const now = ctx.currentTime;
@@ -762,7 +772,10 @@
       if (this.isMuted) return;
       const ctx = this.getAudioContext();
       if (!ctx) return;
-      if (ctx.state === 'suspended') return;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+        return;
+      }
 
       const isIPad = this.isIPadDevice();
       const now = ctx.currentTime;
